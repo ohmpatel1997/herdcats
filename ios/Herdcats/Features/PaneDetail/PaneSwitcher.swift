@@ -141,6 +141,11 @@ struct PaneSwitcher: View {
     private var compactHeight: CGFloat { chipHeight + 12 }
 
     private var orderedPanes: [PaneEntry] {
+        Self.ordered(panes: panes, tabs: tabs)
+    }
+
+    /// Display order of the switcher: grouped by tab, orphans last.
+    static func ordered(panes: [PaneEntry], tabs: [TabEntry]) -> [PaneEntry] {
         let knownTabIDs = Set(tabs.map(\.id))
         return tabs.flatMap { tab in panes.filter { $0.tabId == tab.id } }
             + panes.filter { !knownTabIDs.contains($0.tabId) }
@@ -316,7 +321,7 @@ struct PaneSwitcher: View {
             }
             .onAppear { proxy.scrollTo(selection, anchor: .center) }
             .onChange(of: selection) { _, id in
-                withAnimation { proxy.scrollTo(id, anchor: .center) }
+                withAnimation(.snappy(duration: 0.28)) { proxy.scrollTo(id, anchor: .center) }
             }
             .onChange(of: isCompact) { _, compact in
                 if !compact { proxy.scrollTo(selection, anchor: .center) }
@@ -374,7 +379,7 @@ struct PaneSwitcher: View {
             }
             .onAppear { proxy.scrollTo(selection, anchor: .center) }
             .onChange(of: selection) { _, id in
-                withAnimation { proxy.scrollTo(id, anchor: .center) }
+                withAnimation(.snappy(duration: 0.28)) { proxy.scrollTo(id, anchor: .center) }
             }
             .onChange(of: isCompact) { _, compact in
                 if compact { proxy.scrollTo(selection, anchor: .center) }

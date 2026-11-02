@@ -28,6 +28,10 @@ struct PaneDetailView: View {
     @State private var lastUpdatedByPaneID: [String: Date] = [:]
     /// Pane switcher shows chips instead of cards to give the output more room.
     @State private var isSwitcherCompact = false
+    /// Side the newly selected pane sits on in the switcher; drives the
+    /// incoming session's slide. Set before the animated selection change.
+    @State private var switchEdge: Edge = .trailing
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .subheadline) private var paneCardHeight = 100
     @ScaledMetric(relativeTo: .caption) private var paneChipHeight = 30
     @State private var showLiveDiagnostics = false
@@ -121,6 +125,31 @@ struct PaneDetailView: View {
             }
         )
         .id(sessionIdentity)
+        // The outgoing session only fades: a removed view keeps the transition
+        // it was last rendered with, so a direction-dependent removal would
+        // slide the wrong way.
+        .transition(.asymmetric(
+            insertion: reduceMotion
+                ? .opacity
+                : .opacity.combined(with: .offset(x: switchEdge == .trailing ? 28 : -28)),
+            removal: .opacity
+        ))
+    }
+
+    /// Selection binding for the switcher: records the slide direction from
+    /// the switcher order and animates the session swap.
+    private var animatedSelection: Binding<String> {
+        Binding(
+            get: { selectedPaneID },
+            set: { newID in
+                guard newID != selectedPaneID else { return }
+                let order = PaneSwitcher.ordered(panes: siblings, tabs: tabs).map(\.id)
+                if let old = order.firstIndex(of: selectedPaneID), let new = order.firstIndex(of: newID) {
+                    switchEdge = new > old ? .trailing : .leading
+                }
+                withAnimation(.snappy(duration: 0.28)) { selectedPaneID = newID }
+            }
+        )
     }
 
     /// What the hidden switcher strip offers: pick a sibling pane, and add,
@@ -128,7 +157,7 @@ struct PaneDetailView: View {
     @ViewBuilder
     private var paneMenuSection: some View {
         if siblings.count > 1 {
-            Picker(selection: $selectedPaneID) {
+            Picker(selection: animatedSelection) {
                 ForEach(siblings) { sibling in
                     Text(sibling.displayTitle).tag(sibling.id)
                 }
@@ -163,13 +192,13 @@ struct PaneDetailView: View {
     }
 
     var body: some View {
-        selectedPaneSession
+        ZStack { selectedPaneSession }
         .overlay(alignment: .top) {
             if showsPaneSwitcher {
                 PaneSwitcher(
                     panes: siblings,
                     tabs: tabs,
-                    selection: $selectedPaneID,
+                    selection: animatedSelection,
                     isCompact: $isSwitcherCompact,
                     lastUpdatedByPaneID: lastUpdatedByPaneID,
                     pendingPane: creatingPane,
