@@ -9,4 +9,6 @@ fastlane/README.md
 build/
 
 # Maestro screenshot captures
-maestro/screenshots-output/
+maestro/screenshots-output/*
+!maestro/screenshots-output/ipad/
+!maestro/screenshots-output/iphone-duo/

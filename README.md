@@ -251,9 +251,28 @@ timeline surface independently of earlier captures.
 
 Two more Maestro suites check large-screen layouts in dark mode.
 `ios/bin/maestro-ipad` creates or boots an iPad Pro 13-inch (M5) simulator,
-rotates it to landscape and captures Spaces and Agents. `ios/bin/maestro-duo`
+rotates it to landscape and captures all 12 screens. `ios/bin/maestro-duo`
 runs all 12 screens on the outer and inner displays of an already booted
 **iPhone Duo** simulator.
+
+Their flow folders are siblings under `ios/maestro/screenshots/`: `ipad/`
+contains iPad overrides and `duo/` contains the shared fixture flows. The iPad
+runner falls back to Duo flows when no iPad override exists. The default
+Maestro configuration selects only the top-level iPhone flows; run the
+device-specific suites with their runners:
+
+```sh
+ios/bin/maestro-ipad
+ios/bin/maestro-duo
+```
+
+Raw images and capture manifests live together under
+`ios/maestro/screenshots-output/`: `ipad/` and `iphone-duo/` sit alongside
+`mock-iPhone/` and `iPhone_17_Pro_Max/`. Duo captures retain `outer/` and `inner/`
+subfolders. The iPad and Duo reference captures are tracked in Git; other raw
+capture output remains ignored. `assets/screenshots/` holds the curated iPhone
+gallery used by the website, and `assets/app-store/screenshots/` holds rendered
+App Store artwork.
 
 ## Website
 

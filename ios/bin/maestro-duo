@@ -11,9 +11,9 @@ from datetime import datetime, timezone
 ROOT = Path(__file__).resolve().parents[2]
 IOS = ROOT / 'ios'
 BUNDLE = 'com.enchantinglabs.herdrcat'
-OUTPUT = ROOT / 'assets/screenshots/iphone-duo'
+OUTPUT = IOS / 'maestro/screenshots-output/iphone-duo'
 SET_POSTURE = IOS / 'scripts/set_duo_posture.swift'
-FLOWS_DIR = IOS / 'maestro/duo/flows'
+FLOWS_DIR = IOS / 'maestro/screenshots/duo/flows'
 
 FRAMES = {
     '01_onboarding': 'onboarding',

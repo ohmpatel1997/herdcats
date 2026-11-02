@@ -75,7 +75,9 @@ ios/maestro/fixtures/*key*
 *.pem
 *.key
 ios/maestro/fixtures/
-ios/maestro/screenshots-output/
+ios/maestro/screenshots-output/*
+!ios/maestro/screenshots-output/ipad/
+!ios/maestro/screenshots-output/iphone-duo/
 ios/app-store-images/out/
 web/.next/
 web/out/
