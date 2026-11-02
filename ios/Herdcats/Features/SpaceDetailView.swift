@@ -18,6 +18,7 @@ struct PaneDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.showsPaneSwitcher) private var showsPaneSwitcher
     @Environment(\.showsPaneBackButton) private var showsPaneBackButton
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.openPaneMemory) private var openPaneMemory
     @Environment(\.closeDetail) private var closeDetail
     @State private var siblings: [PaneEntry]
@@ -219,12 +220,13 @@ struct PaneDetailView: View {
         .background(Theme.backgroundGradient.ignoresSafeArea())
         .navigationTitle(selectedPane.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
-        // Hide the system back control to disable interactive swipe-back.
-        // Leaving a pane requires an explicit tap.
-        .navigationBarBackButtonHidden(true)
+        // On iPhone the system back button stays, which keeps the native
+        // interactive swipe-back. Hiding it would disable that gesture.
+        .navigationBarBackButtonHidden(!usesSystemBackButton)
+        .toolbarRole(.editor)
         .toolbar {
             // The split view's detail column has no stack to pop.
-            if showsPaneBackButton {
+            if showsPaneBackButton, !usesSystemBackButton {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         leave()
@@ -457,6 +459,13 @@ struct PaneDetailView: View {
                 await refreshPeersAndTabs()
             }
         }
+    }
+
+    /// iPhone only: iPad and the Duo inner screen use the split view.
+    private var usesSystemBackButton: Bool {
+        showsPaneBackButton
+            && UIDevice.current.userInterfaceIdiom == .phone
+            && horizontalSizeClass == .compact
     }
 
     /// Leaves the pane: clears the list selection when shown from a list,
