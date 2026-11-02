@@ -160,6 +160,8 @@ def main():
                     '-paneShowComposeByDefault', 'NO',
                     '-appearancePreference', 'dark'
                 ]
+                if out_dir.name == 'inner' and screen_arg in ('spaces', 'agents'):
+                    launch.append('-hc.select-first')
                 run('xcrun', 'simctl', 'launch', udid, BUNDLE, *launch)
                 time.sleep(3)
                 

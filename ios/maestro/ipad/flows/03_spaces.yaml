@@ -1,0 +1,13 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Spaces list with active workspace pane selected
+- extendedWaitUntil:
+    visible: "Herdcats"
+    timeout: 10000
+
+- tapOn: "Herdcats"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "03_spaces"

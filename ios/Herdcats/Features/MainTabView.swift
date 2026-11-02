@@ -41,6 +41,7 @@ struct ConnectedTabsView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var model = SpacesModel()
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var selectedTab: MainTab
 
     enum MainTab: String, Hashable {
@@ -68,12 +69,14 @@ struct ConnectedTabsView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             SpacesScreen(model: model)
+                .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Spaces", systemImage: "square.grid.3x3")
                 }
                 .tag(MainTab.spaces)
 
             AgentsScreen(model: model)
+                .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Agents", systemImage: "cpu")
                 }
@@ -81,18 +84,26 @@ struct ConnectedTabsView: View {
                 .tag(MainTab.agents)
 
             QuotaScreen(model: model)
+                .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Quota", systemImage: "gauge.with.dots.needle.67percent")
                 }
                 .tag(MainTab.quota)
 
             SettingsScreen(model: model)
+                .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
                 }
                 .tag(MainTab.settings)
         }
         .environment(model)
+        .environment(
+            \.sidebarTabs,
+            SidebarTabLayout.usesSidebarSwitcher(horizontalSizeClass)
+                ? SidebarTabs(selection: $selectedTab, blockedCount: model.blockedAgentCount)
+                : nil
+        )
         .task {
             model.stopAutoRefresh()
             model.bindConnectionScope(appModel.connectionIdentity)
@@ -145,8 +156,15 @@ struct ConnectedTabsView: View {
 struct AgentsScreen: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let model: SpacesModel
     @State private var raisedCardID: String?
+    /// Pane id of the open agent. Shared by the split view and the compact
+    /// stack, so folding or unfolding keeps the same agent open.
+    @State private var selectedID: String?
+    /// The selected agent as last seen in the list, so a refresh that drops
+    /// it doesn't blank the pane mid-read.
+    @State private var lastSeen: AgentListItem?
 
     @AppStorage(AgentsSortPreference.storageKey)
     private var sortRaw = AgentsSortPreference.default.rawValue
@@ -187,7 +205,10 @@ struct AgentsScreen: View {
 
     var body: some View {
         let currentItems = items
-        NavigationStack {
+        SelectionSplitView(
+            selection: $selectedID,
+            emptyTitle: "Select an agent"
+        ) {
             Group {
                 if appModel.isOffline && currentItems.isEmpty {
                     OfflineHerdView()
@@ -250,11 +271,12 @@ struct AgentsScreen: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
-            .navigationDestination(for: AgentListItem.self) { item in
-                WorkspacePaneView(space: item.space, initialPaneID: item.agent.paneId)
-                    .environment(appModel)
-                    .environment(model)
+            .onChange(of: currentItems) { _, _ in
+                rememberSelected()
+                autoSelectFirstIfNeeded()
             }
+            .onChange(of: selectedID) { _, _ in rememberSelected() }
+            .onAppear { autoSelectFirstIfNeeded() }
             .overlay(alignment: .bottom) {
                 if let error = model.agentListError,
                    case .connected = appModel.phase {
@@ -274,6 +296,27 @@ struct AgentsScreen: View {
                 await model.refresh(appModel.connection)
             }
             .connectionStatusBanner(appModel: appModel)
+        } detail: { id in
+            if let item = currentItems.first(where: { $0.id == id }) ?? lastSeen.flatMap({ $0.id == id ? $0 : nil }) {
+                WorkspacePaneView(space: item.space, initialPaneID: item.agent.paneId)
+                    .environment(appModel)
+                    .environment(model)
+            } else {
+                ContentUnavailableView("Agent unavailable", systemImage: "cpu",
+                                       description: Text("This agent may have closed."))
+            }
+        }
+    }
+
+    private func rememberSelected() {
+        guard let selectedID, let live = items.first(where: { $0.id == selectedID }) else { return }
+        lastSeen = live
+    }
+
+    private func autoSelectFirstIfNeeded() {
+        if selectedID == nil, horizontalSizeClass == .regular,
+           ProcessInfo.processInfo.arguments.contains("-hc.select-first") {
+            selectedID = items.first?.id
         }
     }
 
@@ -318,12 +361,20 @@ struct AgentsScreen: View {
             .frame(width: width, height: height)
     }
 
+    @ViewBuilder
     private func agentRow(_ item: AgentListItem) -> some View {
-        NavigationLink(value: item) {
-            AgentListRow(
-                item: item,
-                lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId]
-            )
+        let isRegular = horizontalSizeClass == .regular
+        let row = AgentListRow(
+            item: item,
+            isSelected: isRegular && selectedID == item.id,
+            lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId]
+        )
+        Group {
+            if isRegular {
+                Button { selectedID = item.id } label: { row }
+            } else {
+                NavigationLink(value: item.id) { row }
+            }
         }
         .buttonStyle(.plain)
         .zIndex(raisedCardID == item.id ? 1 : 0)
@@ -415,6 +466,8 @@ struct AgentListItem: Identifiable, Hashable {
 
 struct AgentListRow: View {
     let item: AgentListItem
+    /// The row open in the split view's detail column.
+    var isSelected = false
     var lastUpdated: Date?
 
     private var agent: AgentEntry { item.agent }
@@ -455,8 +508,10 @@ struct AgentListRow: View {
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .background { RowHighlight(isActive: false, isSelected: isSelected) }
         .overlay(alignment: .bottom) { QuietListDivider() }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

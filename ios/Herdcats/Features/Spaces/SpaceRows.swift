@@ -28,6 +28,8 @@ struct PendingSpaceRow: View {
 struct SpaceRow: View {
     let group: SpaceGroup
     var isHighlighted = false
+    /// The row open in the split view's detail column.
+    var isSelected = false
     var lastUpdated: Date? = nil
 
     private var workspace: Workspace { group.root.workspace }
@@ -58,9 +60,10 @@ struct SpaceRow: View {
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .background { RowHighlight(isActive: isHighlighted) }
+        .background { RowHighlight(isActive: isHighlighted, isSelected: isSelected) }
         .overlay(alignment: .bottom) { QuietListDivider() }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -68,6 +71,7 @@ struct SpaceRow: View {
 struct WorktreeRow: View {
     let space: Space
     var isHighlighted = false
+    var isSelected = false
     var lastUpdated: Date? = nil
 
     var body: some View {
@@ -92,9 +96,10 @@ struct WorktreeRow: View {
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .background { RowHighlight(isActive: isHighlighted) }
+        .background { RowHighlight(isActive: isHighlighted, isSelected: isSelected) }
         .overlay(alignment: .bottom) { QuietListDivider(leadingInset: QuietListMetrics.titleInset * 2) }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -133,10 +138,18 @@ struct FocusedMark: View {
 
 struct RowHighlight: View {
     let isActive: Bool
+    var isSelected = false
 
     var body: some View {
-        if isActive {
-            RoundedRectangle.continuous(DesignSystem.CornerRadius.md)
+        let shape = RoundedRectangle.continuous(DesignSystem.CornerRadius.md)
+        if isSelected {
+            // Open in the detail column: a deeper accent tint with a thin accent outline.
+            shape
+                .fill(Theme.accent.opacity(0.16))
+                .overlay { shape.strokeBorder(Theme.accent.opacity(0.7), lineWidth: 0.5) }
+                .padding(.horizontal, -8)
+        } else if isActive {
+            shape
                 .fill(Theme.selectedFill)
                 .padding(.horizontal, -8)
         }
@@ -168,6 +181,7 @@ struct WorkspacePaneView: View {
     var initialPaneID: String? = nil
 
     @Environment(AppModel.self) private var appModel
+    @Environment(\.openPaneMemory) private var openPaneMemory
     @State private var panes: [PaneEntry] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -184,7 +198,7 @@ struct WorkspacePaneView: View {
     var body: some View {
         Group {
             if let pane = initialPane {
-                PaneDetailView(pane: pane, siblings: panes)
+                PaneDetailView(pane: pane, siblings: panes, restoring: openPaneMemory?.paneID)
             } else {
                 VStack(spacing: 16) {
                     if isLoading {

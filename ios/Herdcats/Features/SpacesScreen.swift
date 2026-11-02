@@ -7,7 +7,15 @@ struct SpacesScreen: View {
     @Environment(AppModel.self) private var appModel
     @Environment(ActiveMachine.self) private var activeMachine: ActiveMachine?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let model: SpacesModel
+
+    /// Id of the open space. Shared by the split view and the compact stack,
+    /// so folding or unfolding keeps the same space open.
+    @State private var selectedID: String?
+    /// The selected space as last seen in the list, so a refresh that drops
+    /// it doesn't blank the pane mid-read.
+    @State private var lastSeen: Space?
 
     @AppStorage(SpaceSortPreference.storageKey)
     private var sortRaw = SpaceSortPreference.default.rawValue
@@ -71,7 +79,10 @@ struct SpacesScreen: View {
     var body: some View {
         @Bindable var model = model
 
-        return NavigationStack {
+        return SelectionSplitView(
+            selection: $selectedID,
+            emptyTitle: "Select a space"
+        ) {
             Group {
                 if model.spaces.isEmpty && model.unconfirmedSpaces.isEmpty
                     && model.pendingSpaceCreationTitle == nil {
@@ -96,6 +107,7 @@ struct SpacesScreen: View {
                                     SpaceRow(
                                         group: group,
                                         isHighlighted: model.highlightedWorktreeID == group.root.id,
+                                        isSelected: isSelected(group.root),
                                         lastUpdated: model.lastActivity(in: group.root)
                                     )
                                 }
@@ -106,6 +118,7 @@ struct SpacesScreen: View {
                                         WorktreeRow(
                                             space: space,
                                             isHighlighted: model.highlightedWorktreeID == space.id,
+                                            isSelected: isSelected(space),
                                             lastUpdated: model.lastActivity(in: space)
                                         )
                                     }
@@ -190,11 +203,12 @@ struct SpacesScreen: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
-            .navigationDestination(for: Space.self) { space in
-                WorkspacePaneView(space: space)
-                    .environment(appModel)
-                    .environment(model)
+            .onChange(of: model.spaces) { _, _ in
+                rememberSelected()
+                autoSelectFirstIfNeeded()
             }
+            .onChange(of: selectedID) { _, _ in rememberSelected() }
+            .onAppear { autoSelectFirstIfNeeded() }
             .sheet(item: $actionsTarget, onDismiss: {
                 guard let pending = pendingSpaceAction else { return }
                 pendingSpaceAction = nil
@@ -368,7 +382,33 @@ struct SpacesScreen: View {
                 _ = await (spaces, usage)
             }
             .connectionStatusBanner(appModel: appModel)
+        } detail: { id in
+            if let space = model.spaces.first(where: { $0.id == id }) ?? lastSeen.flatMap({ $0.id == id ? $0 : nil }) {
+                WorkspacePaneView(space: space)
+                    .environment(appModel)
+                    .environment(model)
+            } else {
+                ContentUnavailableView("Space unavailable", systemImage: "square.grid.3x3",
+                                       description: Text("This space may have closed."))
+            }
         }
+    }
+
+    private func rememberSelected() {
+        guard let selectedID, let live = model.spaces.first(where: { $0.id == selectedID }) else { return }
+        lastSeen = live
+    }
+
+    private func autoSelectFirstIfNeeded() {
+        if selectedID == nil, horizontalSizeClass == .regular,
+           ProcessInfo.processInfo.arguments.contains("-hc.select-first") {
+            selectedID = displayedGroups.first?.root.id
+        }
+    }
+
+    /// Only the split view's detail column marks a row; a pushed pane covers the list.
+    private func isSelected(_ space: Space) -> Bool {
+        horizontalSizeClass == .regular && selectedID == space.id
     }
 
     // MARK: Pieces
@@ -379,10 +419,15 @@ struct SpacesScreen: View {
     private func spaceLink<Row: View>(_ space: Space, @ViewBuilder row: () -> Row) -> some View {
         // Keep native cell selection and swipe handling. The long press must
         // be simultaneous so it doesn't consume the NavigationLink's tap.
-        let link = NavigationLink(value: space) {
-            row()
+        let link = Group {
+            if horizontalSizeClass == .regular {
+                Button { selectedID = space.id } label: { row() }
+                    .buttonStyle(.plain)
+            } else {
+                NavigationLink(value: space.id) { row() }
+                    .hidesNavigationIndicator()
+            }
         }
-        .hidesNavigationIndicator()
         .quietListRow()
         if appModel.isCoreMode {
             link

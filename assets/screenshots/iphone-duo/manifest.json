@@ -1,6 +1,6 @@
 {
   "suite": "iPhone Duo Maestro Standard Suite",
-  "createdAt": "2026-10-29T15:19:14.809249+00:00",
+  "createdAt": "2026-11-02T01:13:59.263491+00:00",
   "device": "iPhone Duo",
   "udid": "4730FABB-DF45-406D-A2D2-1A8DD4109A63",
   "appearance": "dark",
@@ -18,100 +18,100 @@
   },
   "frames": {
     "inner/01_onboarding.png": {
-      "sha256": "6404d83aef6c03c201234086625a887ba169de4d911bfd50ae8ef4c0be68f52e",
-      "size": 291562
+      "sha256": "b35ae731f53a81af564cd8989fa1faceb1cd60fe812218019c54ce91e999d0a0",
+      "size": 292947
     },
     "inner/02_connect_form.png": {
-      "sha256": "7d3cae28b94a8e902038c2ff705661ed82e84c41074d6faf0ba44c0f4c2cf9b7",
-      "size": 273144
+      "sha256": "6568e9c55e59614551ea374de697925460341883b1ca09392261a8bee203d792",
+      "size": 266021
     },
     "inner/03_spaces.png": {
-      "sha256": "896fc063182f9f4286a563bdca5229e613736ccf3c93e26c834f66580ad70f2e",
-      "size": 273942
+      "sha256": "eb34b879ead01c73356b288a3d34114f4b93f19204616561d2d12e46e9712d24",
+      "size": 438774
     },
     "inner/04_workspace_pane.png": {
-      "sha256": "a247479f59dee6f1178cbfece905e43fccc47f435ef4afa7284ca7c01772c6c5",
-      "size": 437281
+      "sha256": "285a573972195e58f544824dcec4b7e2791b4013699bc4aff75530060187d4e5",
+      "size": 438249
     },
     "inner/05_pane_keys.png": {
-      "sha256": "9b62b6d533356bc7c3e5f56b4ff02ed6653aacbaa932ac65f99f4fe991ec5364",
-      "size": 460541
+      "sha256": "988f4e8059d130fb15e9705360ac95d27adc61b2ee17cea1f8da1eb916e4b60a",
+      "size": 461368
     },
     "inner/06_agents.png": {
-      "sha256": "35171b83e63b812e17952ddafdbb452be9540e8a6908f4e2645e7398f1ef1c6f",
-      "size": 290056
+      "sha256": "59dd206491fd6282daab733edc45826c3239f704f9480142e52c9db0309bf3ba",
+      "size": 459076
     },
     "inner/07_agent_pane.png": {
-      "sha256": "a247479f59dee6f1178cbfece905e43fccc47f435ef4afa7284ca7c01772c6c5",
-      "size": 437281
+      "sha256": "285a573972195e58f544824dcec4b7e2791b4013699bc4aff75530060187d4e5",
+      "size": 438249
     },
     "inner/08_quota.png": {
-      "sha256": "ce5a9d4208467de276ee343172f391a61e1c4ab117df6f274129b52660b3a13b",
-      "size": 328580
+      "sha256": "7f1048c197163b7867222fdaf58ae3996feea9676bc3543ecbea95d0b86e2f60",
+      "size": 331947
     },
     "inner/09_settings.png": {
-      "sha256": "fb0591c87f2cffcadfa3a909dbcbda0df777be5e5afaf2e72dadcf6226867ac1",
-      "size": 337450
+      "sha256": "9180b4702953e283a75159975b1bc9a5ae9732f8545804a883e0a0c3bebdd7ff",
+      "size": 338776
     },
     "inner/10_compose.png": {
-      "sha256": "299183e8f50833836a82d416c6af7f199c5bac6d0fd23b090640fa9900a14482",
-      "size": 370499
+      "sha256": "3bd6616a0b10c06c85c81528d8a09fe9dd4855033c053d8b6d9900457b729139",
+      "size": 382730
     },
     "inner/11_voice.png": {
-      "sha256": "ed4aa3de812a426fdfe0673700d96bc404e7344d6ffbd90c40bccbb42801c00d",
-      "size": 385931
+      "sha256": "6649426c7b5f7e3ea5304ada2b095a2f9082d1cb9a89df6f474b939825025403",
+      "size": 376080
     },
     "inner/12_timeline.png": {
-      "sha256": "f660cc42607c5eee55f19bbe66d86bf9374ab80969ae9a1a0c23790adf6426ab",
-      "size": 361078
+      "sha256": "d5d5c6d1283a79b2cbea6461890a15928f0138aac4348871f0b6be45c061c3e0",
+      "size": 373318
     },
     "outer/01_onboarding.png": {
-      "sha256": "06181c8543c4b4f95048bbff36c3179c047b8933aa292a604d1bae2100db2364",
-      "size": 264130
+      "sha256": "15fbd6d53fe9ed8256890070c848f375377d4f052ffb01237c94056e736fea37",
+      "size": 265763
     },
     "outer/02_connect_form.png": {
-      "sha256": "9ee151c11d21943e3179c2e6d9c79d862027d87a955aa334579a7a5629ae1485",
-      "size": 248539
+      "sha256": "18fe1b6032ae1ce0c4f7e6272175592ddd75e35f09f7dde73744e8ef5b34b0cb",
+      "size": 245969
     },
     "outer/03_spaces.png": {
-      "sha256": "625c69191f7a4b7c06fb42a881916fbf5aff0662ca432022d23f1fd59cac6f38",
-      "size": 250933
+      "sha256": "c3cc22d3f8b402fca6ff6ced42e29edc74c3d779f39af43c21f26eb74855fd05",
+      "size": 251725
     },
     "outer/04_workspace_pane.png": {
-      "sha256": "6a21bc08d8490d6b7da8142a99a2e75bbdd9631c7a1f035d2b22efd19c438451",
-      "size": 574653
+      "sha256": "88e03e779c29572904041dac010625255857652ba9eedee220d903674e1ecfc7",
+      "size": 575635
     },
     "outer/05_pane_keys.png": {
-      "sha256": "9017e14546e82c19f7efefcf057282023bfbd8a4b6c1e95558ce5243247cd873",
-      "size": 394682
+      "sha256": "82de5b1f07cd573ef8f01d183cbcfc6429dd8b8ed15f004e186d14a6b162df48",
+      "size": 395921
     },
     "outer/06_agents.png": {
-      "sha256": "9c95ed134e88f8629ad941d0d8d611215241ea7aa0cebaff8a45dbc335510053",
-      "size": 262514
+      "sha256": "f05fff7ce6313297a8b1c5c9b7c194c9367209944e184331e232efdb4f4af64a",
+      "size": 263124
     },
     "outer/07_agent_pane.png": {
-      "sha256": "6a21bc08d8490d6b7da8142a99a2e75bbdd9631c7a1f035d2b22efd19c438451",
-      "size": 574653
+      "sha256": "88e03e779c29572904041dac010625255857652ba9eedee220d903674e1ecfc7",
+      "size": 575635
     },
     "outer/08_quota.png": {
-      "sha256": "46ee114491f48382417424641634d6142b0a41dd7595c99b80cba4fc08e77111",
-      "size": 301906
+      "sha256": "a44b9d42736689fb9134367d6bbc143a50b0d762c696fca0a5f23fcdc8b5199c",
+      "size": 303347
     },
     "outer/09_settings.png": {
-      "sha256": "cc3df7891ec0c4f2eaebc37cb0abba26b33f1d004b13128fa5efb26e22636467",
-      "size": 320712
+      "sha256": "6f93a3a14bd23c68d382040885f3dd64ecd85bfc86f107685057f41ce44e13d2",
+      "size": 322104
     },
     "outer/10_compose.png": {
-      "sha256": "a649053c1d631754131717008846c0d4739ed58b29cf23c2ce00b2e83162676e",
-      "size": 349779
+      "sha256": "f10894f03eaa0370cee6a3fb3c364b28ee37acd68546f6c7f607784e9f2a6f17",
+      "size": 350983
     },
     "outer/11_voice.png": {
-      "sha256": "941b667f08f54ba097aac8f537f28eb9703085b0ccf76a2f5867495b13319d82",
-      "size": 341283
+      "sha256": "d21b7d2b814ff6028522e68460ff70574a1208f9312eed044021d3827ef03e7c",
+      "size": 342353
     },
     "outer/12_timeline.png": {
-      "sha256": "000c38504de1132faf5fbce97ecbb8f05849eeb8727c07ba946383b199ea2c78",
-      "size": 343698
+      "sha256": "69af270eed530e47bf5af3c65220b84ae75390c18ae93ab4bb42fe83d339d2b7",
+      "size": 344882
     }
   }
 }

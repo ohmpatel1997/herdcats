@@ -101,16 +101,28 @@ extension View {
                     "h=\(fmt(info.height)) top=\(fmt(info.topInContainer))"
                 )
             }
+            .modifier(PaneKeyboardDiagnostics(tag: tag))
+    }
+}
+
+/// Logs keyboard frames next to the hosting window's bounds.
+private struct PaneKeyboardDiagnostics: ViewModifier {
+    let tag: String
+    @State private var hostWindow = HostingWindow()
+
+    func body(content: Content) -> some View {
+        content
+            .background(HostingWindowReader(window: hostWindow))
             .onReceive(
                 NotificationCenter.default.publisher(
                     for: UIResponder.keyboardWillChangeFrameNotification
                 )
             ) { note in
                 let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? .zero
-                let screen = UIScreen.main.bounds
+                let bounds = hostWindow.window?.bounds ?? .zero
                 PaneScrollDiag.log(
                     "keyboard[\(tag)]",
-                    "endY=\(fmt(end.minY)) h=\(fmt(end.height)) screenH=\(fmt(screen.height))"
+                    "endY=\(fmt(end.minY)) h=\(fmt(end.height)) windowH=\(fmt(bounds.height))"
                 )
             }
     }

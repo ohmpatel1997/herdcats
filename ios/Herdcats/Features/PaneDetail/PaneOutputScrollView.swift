@@ -36,6 +36,7 @@ struct PaneOutputScrollView: View, Equatable {
     @State private var retainedKeyboardSpace: CGFloat = 0
     @State private var retainedDockSpace: CGFloat = 0
     @State private var pendingKeyboardSpace: CGFloat = 0
+    @State private var hostWindow = HostingWindow()
 
     init(
         output: String,
@@ -236,20 +237,21 @@ struct PaneOutputScrollView: View, Equatable {
                 )
             ) { note in
                 guard let endFrame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-                keyboardHeight = max(0, UIScreen.main.bounds.maxY - endFrame.minY)
+                keyboardHeight = hostWindow.keyboardOverlap(screenFrame: endFrame)
                 guard !selectionActive, pendingKeyboardSpace == 0, keyboardFocused, !output.isEmpty,
-                      endFrame.minY < UIScreen.main.bounds.height
+                      keyboardHeight > 0
                 else { return }
                 withAnimation(.easeOut(duration: 0.25)) {
                     proxy.scrollTo("pane-output-bottom", anchor: .bottom)
                 }
             }
         }
+        .background(HostingWindowReader(window: hostWindow))
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { note in
             // An empty field can resign before the terminal's touch recognizer
             // fires. Reserve the old keyboard inset before UIKit clamps scroll.
             let begin = note.userInfo?[UIResponder.keyboardFrameBeginUserInfoKey] as? CGRect
-            let space = max(keyboardHeight, begin.map { max(0, UIScreen.main.bounds.maxY - $0.minY) } ?? 0)
+            let space = max(keyboardHeight, begin.map { hostWindow.keyboardOverlap(screenFrame: $0) } ?? 0)
             pendingKeyboardSpace = max(pendingKeyboardSpace, space)
             if selectionActive { retainedKeyboardSpace = max(retainedKeyboardSpace, space) }
             onSelectionChange(true)
@@ -287,6 +289,64 @@ struct PaneOutputScrollView: View, Equatable {
         case nil: Color.clear
         }
     }
+}
+
+/// Whether a keyboard frame, in screen coordinates, is docked: a docked
+/// keyboard reaches the bottom of the screen, a floating one ends above it.
+func isDockedKeyboard(screenFrame: CGRect, screenBounds: CGRect) -> Bool {
+    screenFrame.maxY >= screenBounds.maxY - 1
+}
+
+/// How far a keyboard covers the bottom of a window. The frame and bounds
+/// are in the window's coordinate space; `isDocked` comes from the screen,
+/// since a short window's bottom edge says nothing about docking. An undocked
+/// or hidden keyboard, or one beside the window, covers nothing; a window
+/// shorter than the screen is covered only from the keyboard's top edge down.
+func keyboardOverlap(keyboardFrameInWindow frame: CGRect, windowBounds: CGRect, isDocked: Bool) -> CGFloat {
+    guard isDocked, frame.maxX > windowBounds.minX, frame.minX < windowBounds.maxX else { return 0 }
+    return min(windowBounds.height, max(0, windowBounds.maxY - frame.minY))
+}
+
+/// Weak handle to the window hosting a SwiftUI view, so keyboard frames
+/// (reported in screen coordinates) can be measured against that window
+/// rather than the device screen. Correct for iPad windows, Stage Manager
+/// and the iPhone Duo's two screens.
+final class HostingWindow {
+    weak var window: UIWindow?
+
+    /// Overlap of a screen-space keyboard frame with the hosting window,
+    /// or 0 until the view is in a window.
+    func keyboardOverlap(screenFrame: CGRect) -> CGFloat {
+        guard let window else { return 0 }
+        let frame = window.convert(screenFrame, from: window.screen.coordinateSpace)
+        return Herdcats.keyboardOverlap(
+            keyboardFrameInWindow: frame,
+            windowBounds: window.bounds,
+            isDocked: isDockedKeyboard(screenFrame: screenFrame, screenBounds: window.screen.bounds)
+        )
+    }
+}
+
+/// Zero-size background that records its window into a `HostingWindow`.
+struct HostingWindowReader: UIViewRepresentable {
+    let window: HostingWindow
+
+    private final class ProbeView: UIView {
+        var onWindow: ((UIWindow?) -> Void)?
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            onWindow?(window)
+        }
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = ProbeView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        view.onWindow = { [weak window] in window?.window = $0 }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
 /// A single, read-only native text surface provides draggable selection handles

@@ -16,6 +16,10 @@ struct PaneDetailView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(SpacesModel.self) private var spacesModel: SpacesModel?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.showsPaneSwitcher) private var showsPaneSwitcher
+    @Environment(\.showsPaneBackButton) private var showsPaneBackButton
+    @Environment(\.openPaneMemory) private var openPaneMemory
+    @Environment(\.closeDetail) private var closeDetail
     @State private var siblings: [PaneEntry]
     @State private var tabs: [TabEntry] = []
     @State private var selectedPaneID: String
@@ -46,13 +50,16 @@ struct PaneDetailView: View {
     @State private var workspace: Workspace?
     @State private var pendingWorkspaceAction: WorkspaceAction?
 
-    init(pane: PaneEntry, siblings: [PaneEntry] = []) {
+    /// `restoring` is the sibling that was open before the layout changed
+    /// width; it is ignored when that pane is no longer in the workspace.
+    init(pane: PaneEntry, siblings: [PaneEntry] = [], restoring restoredPaneID: String? = nil) {
         self.pane = pane
         let peers = siblings.filter {
             $0.workspaceId == pane.workspaceId
         }
-        _siblings = State(initialValue: peers.contains(where: { $0.id == pane.id }) ? peers : [pane] + peers)
-        _selectedPaneID = State(initialValue: pane.id)
+        let all = peers.contains(where: { $0.id == pane.id }) ? peers : [pane] + peers
+        _siblings = State(initialValue: all)
+        _selectedPaneID = State(initialValue: all.contains { $0.id == restoredPaneID } ? restoredPaneID ?? pane.id : pane.id)
     }
 
     private var selectedPane: PaneEntry {
@@ -60,7 +67,8 @@ struct PaneDetailView: View {
     }
 
     private var paneSwitcherHeight: CGFloat {
-        isSwitcherCompact ? paneChipHeight + 12 : paneCardHeight + 20
+        guard showsPaneSwitcher else { return 0 }
+        return isSwitcherCompact ? paneChipHeight + 12 : paneCardHeight + 20
     }
 
     /// Identity for `PaneSessionView`: the selected pane within the current
@@ -115,28 +123,69 @@ struct PaneDetailView: View {
         .id(sessionIdentity)
     }
 
+    /// What the hidden switcher strip offers: pick a sibling pane, and add,
+    /// rename or kill one.
+    @ViewBuilder
+    private var paneMenuSection: some View {
+        if siblings.count > 1 {
+            Picker(selection: $selectedPaneID) {
+                ForEach(siblings) { sibling in
+                    Text(sibling.displayTitle).tag(sibling.id)
+                }
+            } label: {
+                Label("Switch Pane", systemImage: "rectangle.stack")
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("pane-menu-switch")
+        }
+        if !appModel.isCoreMode {
+            Button {
+                isShowingAddPane = true
+            } label: {
+                Label("Add Pane", systemImage: "plus")
+            }
+            .accessibilityIdentifier("pane-menu-add")
+
+            Button {
+                beginRename(selectedPane)
+            } label: {
+                Label("Rename Pane", systemImage: "pencil")
+            }
+            .accessibilityIdentifier("pane-menu-rename")
+
+            Button(role: .destructive) {
+                beginKill(selectedPane)
+            } label: {
+                Label("Kill Pane", systemImage: "xmark.square")
+            }
+            .accessibilityIdentifier("pane-menu-kill")
+        }
+    }
+
     var body: some View {
         selectedPaneSession
         .overlay(alignment: .top) {
-            PaneSwitcher(
-                panes: siblings,
-                tabs: tabs,
-                selection: $selectedPaneID,
-                isCompact: $isSwitcherCompact,
-                lastUpdatedByPaneID: lastUpdatedByPaneID,
-                pendingPane: creatingPane,
-                isAddDisabled: isPerformingAction,
-                allowsMutations: !appModel.isCoreMode,
-                onAdd: {
-                    isShowingAddPane = true
-                },
-                onRename: { pane in
-                    beginRename(pane)
-                },
-                onKill: { pane in
-                    beginKill(pane)
-                }
-            )
+            if showsPaneSwitcher {
+                PaneSwitcher(
+                    panes: siblings,
+                    tabs: tabs,
+                    selection: $selectedPaneID,
+                    isCompact: $isSwitcherCompact,
+                    lastUpdatedByPaneID: lastUpdatedByPaneID,
+                    pendingPane: creatingPane,
+                    isAddDisabled: isPerformingAction,
+                    allowsMutations: !appModel.isCoreMode,
+                    onAdd: {
+                        isShowingAddPane = true
+                    },
+                    onRename: { pane in
+                        beginRename(pane)
+                    },
+                    onKill: { pane in
+                        beginKill(pane)
+                    }
+                )
+            }
         }
         .background(Theme.backgroundGradient.ignoresSafeArea())
         .navigationTitle(selectedPane.displayTitle)
@@ -145,14 +194,17 @@ struct PaneDetailView: View {
         // Leaving a pane requires an explicit tap.
         .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    dismiss()
-                } label: {
-                    Label("Back", systemImage: "chevron.backward")
+            // The split view's detail column has no stack to pop.
+            if showsPaneBackButton {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        leave()
+                    } label: {
+                        Label("Back", systemImage: "chevron.backward")
+                    }
+                    .tint(Color.primary)
+                    .accessibilityIdentifier("pane-back-button")
                 }
-                .tint(Color.primary)
-                .accessibilityIdentifier("pane-back-button")
             }
             ToolbarItem(placement: .principal) {
                 StatusNavigationTitle(
@@ -184,6 +236,12 @@ struct PaneDetailView: View {
                             Label("Upgrade Herdcats Bridge", systemImage: "arrow.up.circle")
                         }
                         .accessibilityIdentifier("timeline-upgrade-menu-button")
+                        Divider()
+                    }
+                    // The switcher strip is hidden while the list column shows,
+                    // so its pane switching and actions move into this menu.
+                    if !showsPaneSwitcher {
+                        paneMenuSection
                         Divider()
                     }
                     if !appModel.isCoreMode {
@@ -248,10 +306,12 @@ struct PaneDetailView: View {
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
-        .onChange(of: selectedPaneID) { _, _ in
+        .onChange(of: selectedPaneID) { _, selected in
             bridgeUpgrade.bridgeVersion = nil
+            openPaneMemory?.remember(selected)
         }
-        .toolbar(.hidden, for: .tabBar)
+        // Pushed panes hide the tab bar; in the detail column it stays so tabs can still switch.
+        .toolbar(showsPaneBackButton ? .hidden : .automatic, for: .tabBar)
         .onDisappear {
             #if DEBUG
             showLiveDiagnostics = false
@@ -370,12 +430,22 @@ struct PaneDetailView: View {
         }
     }
 
+    /// Leaves the pane: clears the list selection when shown from a list,
+    /// so the split view's detail column empties too, else pops the stack.
+    private func leave() {
+        if let closeDetail {
+            closeDetail()
+        } else {
+            dismiss()
+        }
+    }
+
     private func refreshPeersAndTabs() async {
         if let latest = try? await appModel.connection.paneList(workspaceId: pane.workspaceId),
            !Task.isCancelled {
             switch PanePeerRefresh.outcome(peers: latest, selectedPaneID: selectedPaneID) {
             case .dismiss:
-                dismiss()
+                leave()
             case let .apply(peers, nextSelected):
                 siblings = peers
                 lastUpdatedByPaneID = PaneLastUpdatedStore.observe(peers, scope: connectionScope)
@@ -429,14 +499,14 @@ struct PaneDetailView: View {
                 )
             case let (.close(target), .close):
                 try await appModel.connection.workspaceClose(workspaceId: target.workspaceId)
-                dismiss()
+                leave()
             case let (.deleteWorktree(target), .deleteWorktree(force, trustRepository)):
                 try await appModel.connection.worktreeRemove(
                     workspaceId: target.workspaceId,
                     force: force,
                     trustRepository: trustRepository
                 )
-                dismiss()
+                leave()
             default:
                 return
             }
@@ -470,7 +540,7 @@ struct PaneDetailView: View {
             let remaining = siblings.filter { $0.id != paneToKill.id }
             siblings = remaining
             if remaining.isEmpty {
-                dismiss()
+                leave()
             } else {
                 if selectedPaneID == paneToKill.id {
                     selectedPaneID = remaining[0].id
@@ -480,7 +550,7 @@ struct PaneDetailView: View {
                 siblings = latest
                 lastUpdatedByPaneID = PaneLastUpdatedStore.observe(latest, scope: connectionScope)
                 if latest.isEmpty {
-                    dismiss()
+                    leave()
                 } else if !latest.contains(where: { $0.id == selectedPaneID }) {
                     selectedPaneID = latest[0].id
                 }

@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""Run Maestro suite for iPad Pro 13-inch (M5) in dark mode landscape."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import time
+from datetime import datetime, timezone
+
+ROOT = Path(__file__).resolve().parents[2]
+IOS = ROOT / 'ios'
+BUNDLE = 'com.enchantinglabs.herdrcat'
+OUTPUT = ROOT / 'assets/screenshots/ipad'
+IPAD_FLOWS_DIR = IOS / 'maestro/ipad/flows'
+DUO_FLOWS_DIR = IOS / 'maestro/duo/flows'
+
+FRAMES = {
+    '01_onboarding': 'onboarding',
+    '02_connect_form': 'connect',
+    '03_spaces': 'spaces',
+    '04_workspace_pane': 'pane',
+    '05_pane_keys': 'keys',
+    '06_agents': 'agents',
+    '07_agent_pane': 'agent-pane',
+    '08_quota': 'quota',
+    '09_settings': 'settings',
+    '10_compose': 'compose',
+    '11_voice': 'voice',
+    '12_timeline': 'timeline',
+}
+
+def run(*args, **kwargs):
+    return subprocess.run(args, check=True, **kwargs)
+
+def get_ipad_udid():
+    listing = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))
+    devices = [d for runtime, group in listing['devices'].items() for d in group 
+               if 'iOS' in runtime and d.get('name') == 'iPad Pro 13-inch (M5)']
+    if not devices:
+        # Create one if missing
+        print("Creating iPad Pro 13-inch (M5) simulator...")
+        runtimes = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'runtimes', '-j']))['runtimes']
+        # Find latest iOS runtime supporting M5
+        target_runtime = None
+        for r in runtimes:
+            if 'iOS' in r['name'] and any('M5' in d.get('name', '') for d in r.get('supportedDeviceTypes', [])):
+                target_runtime = r['identifier']
+        if not target_runtime:
+            target_runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-27-0'
+        udid = subprocess.check_output([
+            'xcrun', 'simctl', 'create', 'iPad Pro 13-inch (M5)',
+            'com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB',
+            target_runtime
+        ], text=True).strip()
+        run('xcrun', 'simctl', 'boot', udid)
+        run('xcrun', 'simctl', 'bootstatus', udid, '-b')
+        return udid
+    
+    # Prefer booted device
+    booted = [d for d in devices if d.get('state') == 'Booted']
+    if booted:
+        return booted[0]['udid']
+    
+    # Boot the first available
+    udid = devices[0]['udid']
+    print(f"Booting iPad Pro 13-inch (M5): {udid}...")
+    run('xcrun', 'simctl', 'boot', udid)
+    run('xcrun', 'simctl', 'bootstatus', udid, '-b')
+    return udid
+
+def is_landscape(udid: str) -> bool:
+    try:
+        out = subprocess.check_output(['xcrun', 'simctl', 'io', udid, 'enumerate'], text=True)
+        for line in out.splitlines():
+            if 'UI Orientation:' in line and 'Landscape' in line:
+                return True
+    except Exception:
+        pass
+    return False
+
+def ensure_landscape(udid: str):
+    if is_landscape(udid):
+        print("Device is already in landscape orientation.")
+        return
+    print("Setting device orientation to landscape...")
+    temp_flow = Path('/tmp/ensure_ipad_landscape.yaml')
+    temp_flow.write_text(f"""appId: {BUNDLE}
+---
+- setOrientation: LANDSCAPE_LEFT
+- waitForAnimationToEnd:
+    timeout: 1000
+""")
+    try:
+        subprocess.run(['maestro', '--device', udid, 'test', str(temp_flow)],
+                       capture_output=True, text=True, timeout=25)
+    except Exception as e:
+        print(f"Warning: could not set initial orientation via Maestro: {e}")
+    finally:
+        temp_flow.unlink(missing_ok=True)
+
+def capture_screen(udid: str, flow_path: Path, output_file: Path):
+    print(f"  -> Validating with Maestro flow: {flow_path.name}")
+    try:
+        proc = subprocess.run(
+            ['maestro', '--device', udid, 'test', str(flow_path)],
+            cwd='/tmp',
+            capture_output=True,
+            text=True,
+            timeout=45
+        )
+    except FileNotFoundError:
+        raise RuntimeError("Maestro CLI executable not found in PATH")
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"Maestro validation timed out after 45s on {flow_path.name}") from e
+
+    if proc.returncode != 0:
+        details = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(
+            f"Maestro validation failed for {flow_path.name} (exit {proc.returncode}):\n{details}"
+        )
+    
+    # Capture the exact hardware framebuffer for this display
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.unlink(missing_ok=True)
+    run('xcrun', 'simctl', 'io', udid, 'screenshot', str(output_file))
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--device', help='Specific simulator UDID')
+    parser.add_argument('--only', nargs='+', choices=FRAMES.keys())
+    parser.add_argument('--app', type=Path, help='Use an already-built Debug simulator app bundle')
+    parser.add_argument('--build', action='store_true', help='Build and install fresh Debug app before running')
+    options = parser.parse_args()
+
+    udid = options.device or get_ipad_udid()
+    print(f"Using iPad Pro 13-inch (M5): {udid}")
+
+    if options.build:
+        build_dir = IOS / 'build/screenshots-derived-data'
+        print("Building fresh Debug simulator app...")
+        run('xcodegen', 'generate', '--spec', str(IOS / 'project.yml'))
+        run('xcodebuild', '-project', str(IOS / 'Herdcats.xcodeproj'), '-scheme', 'Herdcats',
+            '-configuration', 'Debug', '-destination', f"platform=iOS Simulator,id={udid}",
+            '-derivedDataPath', str(build_dir), 'CODE_SIGNING_ALLOWED=NO', 'build')
+        app_to_install = build_dir / 'Build/Products/Debug-iphonesimulator/Herdcats.app'
+        print(f"Installing {app_to_install.name}...")
+        run('xcrun', 'simctl', 'install', udid, str(app_to_install))
+    elif options.app:
+        print(f"Installing specified app {options.app}...")
+        run('xcrun', 'simctl', 'install', udid, str(options.app))
+    elif (IOS / 'build/screenshots-derived-data/Build/Products/Debug-iphonesimulator/Herdcats.app').exists():
+        app_to_install = IOS / 'build/screenshots-derived-data/Build/Products/Debug-iphonesimulator/Herdcats.app'
+        print(f"Ensuring latest built Debug app from {app_to_install} is installed...")
+        run('xcrun', 'simctl', 'install', udid, str(app_to_install))
+
+    # Set dark appearance
+    run('xcrun', 'simctl', 'ui', udid, 'appearance', 'dark')
+
+    ensure_landscape(udid)
+
+    frames_to_run = {k: FRAMES[k] for k in options.only} if options.only else FRAMES
+
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    manifest_path = OUTPUT / 'manifest.json'
+    existing_frames = {}
+    if manifest_path.exists() and options.only:
+        try:
+            prev = json.loads(manifest_path.read_text())
+            existing_frames = prev.get('frames', {})
+        except Exception as e:
+            print(f"Warning: could not read existing manifest ({e})")
+            existing_frames = {}
+
+    manifest_data = {
+        'suite': 'iPad Pro 13-inch (M5) Maestro Standard Suite',
+        'createdAt': datetime.now(timezone.utc).isoformat(),
+        'device': 'iPad Pro 13-inch (M5)',
+        'udid': udid,
+        'appearance': 'dark',
+        'orientation': 'landscape',
+        'frames': existing_frames
+    }
+
+    try:
+        # Set clean status bar
+        run('xcrun', 'simctl', 'status_bar', udid, 'override',
+            '--time', '9:41', '--dataNetwork', 'wifi', '--wifiMode', 'active',
+            '--wifiBars', '3', '--batteryState', 'charged', '--batteryLevel', '100')
+
+        print(f"\n==========================================")
+        print(f"=== iPad Pro 13-inch (M5) Landscape Dark ===")
+        print(f"==========================================")
+
+        for frame_name, screen_arg in frames_to_run.items():
+            print(f"Capturing frame {frame_name} ({screen_arg})...")
+            # Terminate previous run
+            subprocess.run(['xcrun', 'simctl', 'terminate', udid, BUNDLE],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            # Launch target screen
+            launch = [
+                '-hc.screenshots', '-hc.capture-surface',
+                '-hc.screen', screen_arg, '-hc.tab', screen_arg,
+                '-paneShowComposeByDefault', 'NO',
+                '-appearancePreference', 'dark'
+            ]
+            run('xcrun', 'simctl', 'launch', udid, BUNDLE, *launch)
+            time.sleep(3)
+            
+            # Prefer iPad-specific flow; reuse Duo flow if not present
+            flow_path = IPAD_FLOWS_DIR / f"{frame_name}.yaml"
+            if not flow_path.exists():
+                flow_path = DUO_FLOWS_DIR / f"{frame_name}.yaml"
+
+            dest_file = OUTPUT / f"{frame_name}.png"
+            capture_screen(udid, flow_path, dest_file)
+            
+            # Save hash
+            manifest_data['frames'][f"{frame_name}.png"] = {
+                'sha256': hashlib.sha256(dest_file.read_bytes()).hexdigest(),
+                'size': dest_file.stat().st_size
+            }
+            print(f"  ✓ Saved {dest_file.name} ({dest_file.stat().st_size // 1024} KB)")
+
+        # Write manifest
+        manifest_data['frames'] = dict(sorted(manifest_data['frames'].items()))
+        manifest_path = OUTPUT / 'manifest.json'
+        manifest_path.write_text(json.dumps(manifest_data, indent=2) + '\n')
+        print(f"\nManifest written to: {manifest_path}")
+
+    finally:
+        run('xcrun', 'simctl', 'status_bar', udid, 'clear')
+
+    print("\nAll iPad standard suite screenshots captured successfully!")
+
+if __name__ == '__main__':
+    main()

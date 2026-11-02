@@ -1,0 +1,58 @@
+{
+  "suite": "iPad Pro 13-inch (M5) Maestro Standard Suite",
+  "createdAt": "2026-11-02T00:46:39.512017+00:00",
+  "device": "iPad Pro 13-inch (M5)",
+  "udid": "84D11F8C-AC04-4084-B15C-D9DBBA24A045",
+  "appearance": "dark",
+  "orientation": "landscape",
+  "frames": {
+    "01_onboarding.png": {
+      "sha256": "8f7ca4c19a1585120a54aa2603f12029f7968181bda89767400702311381fd3e",
+      "size": 193907
+    },
+    "02_connect_form.png": {
+      "sha256": "ad22cd43f4d4e5ffbb52f558c9937da5357bd6b90c1468c6dab2809d6994f0be",
+      "size": 210491
+    },
+    "03_spaces.png": {
+      "sha256": "5c1084308f8505de4359b9ad153ae142a3ec27a631a9818b1f46afca5374c1d9",
+      "size": 290854
+    },
+    "04_workspace_pane.png": {
+      "sha256": "c733e9e68869e76e2cbb337c2f217ac508fd3f264a42ae8df9c6ef91a9aeac85",
+      "size": 292458
+    },
+    "05_pane_keys.png": {
+      "sha256": "04a63f6a736a964e47d694f9161ed94acfa69add8495047aeb6433fa7e2e7dff",
+      "size": 335932
+    },
+    "06_agents.png": {
+      "sha256": "2d7f38f5c7763f48c5f17dbcf8b83d9524c6d859c2a892e786c75b25fe6c5bb4",
+      "size": 309589
+    },
+    "07_agent_pane.png": {
+      "sha256": "c733e9e68869e76e2cbb337c2f217ac508fd3f264a42ae8df9c6ef91a9aeac85",
+      "size": 292458
+    },
+    "08_quota.png": {
+      "sha256": "e4863f2b3ee800bfb6295f493ec37b0bc88969fae2800b01d30fc7913c2e23ea",
+      "size": 244745
+    },
+    "09_settings.png": {
+      "sha256": "0e776c3adffbb05e3504d531255e7069b6991bb364b90b2ef12a1ab312694061",
+      "size": 315445
+    },
+    "10_compose.png": {
+      "sha256": "bbd0937d2acfe59859fef0518ed8c84a0b143a3a892ea2515becad023fa1ed29",
+      "size": 250474
+    },
+    "11_voice.png": {
+      "sha256": "1f6557ffaae4db8c59be926720eb58e0a072c129feb33205945a6198319c6db5",
+      "size": 257945
+    },
+    "12_timeline.png": {
+      "sha256": "6a962f4c0a18e7b8d8ef84e2461579c3d9e74f621ff75bf834aab5199911e0aa",
+      "size": 244086
+    }
+  }
+}
