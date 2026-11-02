@@ -152,8 +152,8 @@ struct PaneDetailView: View {
         )
     }
 
-    /// What the hidden switcher strip offers: pick a sibling pane, and add,
-    /// rename or kill one.
+    /// What the switcher strip offers, for when it is turned off: pick a
+    /// sibling pane, and add, rename or kill one.
     @ViewBuilder
     private var paneMenuSection: some View {
         if siblings.count > 1 {
@@ -267,8 +267,8 @@ struct PaneDetailView: View {
                         .accessibilityIdentifier("timeline-upgrade-menu-button")
                         Divider()
                     }
-                    // The switcher strip is hidden while the list column shows,
-                    // so its pane switching and actions move into this menu.
+                    // Without the switcher strip, its pane switching and
+                    // actions move into this menu.
                     if !showsPaneSwitcher {
                         paneMenuSection
                         Divider()
