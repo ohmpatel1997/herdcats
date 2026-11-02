@@ -18,6 +18,11 @@ install -d -o review -g review -m 700 /data/home/review/projects
 printf 'review:%s\n' "$REVIEW_SSH_PASSWORD" | chpasswd
 unset REVIEW_SSH_PASSWORD
 
+# Refresh the managed helper/extension even when /data contains an older setup.
+# Run as review so files have the same owner as Pi and SSH; preserve auth/history.
+runuser -u review -- /bin/sh /opt/review/scripts/configure-home.sh /opt/review /data/home/review
+runuser -u review -- /usr/local/bin/review-verify /data/home/review
+
 install -d -m 755 /run/sshd
 /usr/sbin/sshd -t
 

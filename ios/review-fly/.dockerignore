@@ -1,0 +1,9 @@
+*
+!Dockerfile
+!runtime.env
+!pi-settings.json
+!install-runtime.sh
+!configure-home.sh
+!verify-runtime.sh
+!entrypoint.sh
+!sshd_config

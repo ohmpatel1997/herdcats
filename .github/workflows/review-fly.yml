@@ -1,0 +1,38 @@
+name: Review runtime
+
+# Separate workflow so the Docker build only runs when the review runtime changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ios/review-fly/**
+      - .github/workflows/review-fly.yml
+  pull_request:
+    paths:
+      - ios/review-fly/**
+      - .github/workflows/review-fly.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review-image:
+    name: Fly review runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test persistent home reconciliation
+        run: python3 -m unittest discover -s ios/review-fly/tests -v
+      - name: Build the declared runtime
+        run: docker build --platform linux/amd64 -t herdcats-review:test ios/review-fly
+      - name: Check startup, restart, and live Pi extension
+        run: python3 ios/review-fly/tests/smoke_runtime.py herdcats-review:test
