@@ -25,6 +25,8 @@ extension CoreSnapshot {
 private struct CoreHierarchyBuilder {
     let snapshot: CoreSnapshot
     private let live: [String: CoreJSON]
+    /// Live terminals by creation time, ties broken by natural address order.
+    private let orderedAddresses: [String]
     var result = CoreHierarchy()
     private var assigned: Set<String> = []
     private var spaceIDs: Set<String> = []
@@ -32,7 +34,13 @@ private struct CoreHierarchyBuilder {
 
     init(snapshot: CoreSnapshot) {
         self.snapshot = snapshot
-        live = snapshot.terminals.filter { $0.value["state"].stringValue == "live" }
+        let live = snapshot.terminals.filter { $0.value["state"].stringValue == "live" }
+        self.live = live
+        orderedAddresses = live.keys.sorted {
+            let left = live[$0]?["created_ms"].uint64Value ?? 0
+            let right = live[$1]?["created_ms"].uint64Value ?? 0
+            return left == right ? $0.localizedStandardCompare($1) == .orderedAscending : left < right
+        }
     }
 
     mutating func addLayout(_ document: CoreJSON, machine: String?) {
@@ -124,14 +132,6 @@ private struct CoreHierarchyBuilder {
                 terminalTitle: title, terminalTitleStripped: title,
                 focused: false, revision: snapshot.revisions[address]
             ))
-        }
-    }
-
-    private var orderedAddresses: [String] {
-        live.keys.sorted {
-            let left = live[$0]?["created_ms"].uint64Value ?? 0
-            let right = live[$1]?["created_ms"].uint64Value ?? 0
-            return left == right ? $0.localizedStandardCompare($1) == .orderedAscending : left < right
         }
     }
 

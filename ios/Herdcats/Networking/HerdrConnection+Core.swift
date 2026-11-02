@@ -129,9 +129,25 @@ extension HerdrConnection {
         try requireGeneration(owned)
         guard coreSessionID == session else { throw HerdrError.notConnected }
         coreHello = hello
-        coreSnapshot = try CoreSnapshot(subscription: value)
-        for message in earlyCoreNotifications { _ = try coreSnapshot?.apply(message) }
+        try replaceCoreSnapshot(subscription: value)
+        for message in earlyCoreNotifications { try applyCoreNotification(message) }
         earlyCoreNotifications = []
+    }
+
+    /// Installs a fresh subscription snapshot. Its sequence may equal the old
+    /// one's (sequences reset per Core process), so the memo is dropped.
+    func replaceCoreSnapshot(subscription value: CoreJSON) throws {
+        coreSnapshot = try CoreSnapshot(subscription: value)
+        invalidateCorePresentation()
+    }
+
+    /// Applies one event to the snapshot and drops the memo when it asks for
+    /// a refetch (`missed` replacement or a layout document change).
+    @discardableResult
+    func applyCoreNotification(_ value: CoreJSON) throws -> Bool {
+        let refetch = try coreSnapshot?.apply(value) ?? false
+        if refetch { invalidateCorePresentation() }
+        return refetch
     }
 
     private func receiveCoreNotification(_ value: CoreJSON, owned: ConnectionGeneration, session: UUID) throws {
@@ -143,7 +159,7 @@ extension HerdrConnection {
             earlyCoreNotifications.append(value)
             return
         }
-        let refetch = try coreSnapshot?.apply(value) ?? false
+        let refetch = try applyCoreNotification(value)
         if refetch {
             coreDocumentsRevision &+= 1
             scheduleCoreDocumentReload(owned: owned, session: session)
@@ -226,16 +242,45 @@ extension HerdrConnection {
         let old = coreRPC
         coreRPC = nil
         coreSnapshot = nil
+        invalidateCorePresentation()
         coreHello = .null
         coreLayouts = [:]
         earlyCoreNotifications = []
         if let old { Task { await old.close() } }
     }
 
+    /// True while Core mode has a live event subscription: snapshot installed
+    /// and startup finished. Events then drive refreshes through
+    /// `runtimeChangeHandler`.
+    var coreEventsOpen: Bool {
+        backend == .core && coreSessionID != nil && coreOpening == nil && coreSnapshot != nil
+    }
+
     func corePresentation() async throws -> CoreHierarchy {
         _ = try await startCore()
+        return try cachedCorePresentation()
+    }
+
+    /// Builds the hierarchy at most once per snapshot sequence and layouts
+    /// revision, so one refresh's workspace/agent/tab/pane queries share it.
+    func cachedCorePresentation() throws -> CoreHierarchy {
         guard let coreSnapshot else { throw HerdrError.notConnected }
-        return coreSnapshot.presentation(layout: coreLayouts[""], remoteLayouts: coreLayouts.filter { !$0.key.isEmpty })
+        if let memo = corePresentationMemo,
+           memo.seq == coreSnapshot.seq, memo.layoutsRevision == coreLayoutsRevision {
+            return memo.value
+        }
+        let value = coreSnapshot.presentation(layout: coreLayouts[""], remoteLayouts: coreLayouts.filter { !$0.key.isEmpty })
+        #if DEBUG
+        corePresentationBuilds += 1
+        #endif
+        corePresentationMemo = (coreSnapshot.seq, coreLayoutsRevision, value)
+        return value
+    }
+
+    /// The snapshot was replaced (new subscription, `missed`, close) or a
+    /// document changed, so a same-sequence memo can no longer be trusted.
+    func invalidateCorePresentation() {
+        corePresentationMemo = nil
     }
 
     func coreRequest(_ method: String, params: [String: CoreJSON], timeout: TimeInterval = 15,

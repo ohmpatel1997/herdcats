@@ -252,7 +252,7 @@ private struct LoadingAuditFixtureView: View {
                         else if screen.hasSuffix("quota") { QuotaScreen(model: quota) }
                         else if screen.hasSuffix("terminal") {
                             NavigationStack {
-                                PaneOutputScrollView(output: "", outputLines: [], outputRevision: 0,
+                                PaneOutputScrollView(output: "", selectableText: AttributedString(), outputRevision: 0,
                                     outputPointSize: 14, paneScrollBehavior: .holdPosition, keyboardFocused: false,
                                     isOffline: true, isLoading: false, reservesMarkAsReadSpace: false,
                                     topOverlayInset: 60, bottomOverlayInset: 100, paneId: "fixture",
@@ -292,7 +292,7 @@ private struct LoadingAuditFixtureView: View {
                         }
                     } else {
                         let text = screen.hasSuffix("retained") ? "Verified terminal output" : ""
-                        PaneOutputScrollView(output: text, outputLines: ANSIText.lines(from: text), outputRevision: 0,
+                        PaneOutputScrollView(output: text, selectableText: PaneOutputPresentation.selectableText(from: ANSIText.lines(from: text)), outputRevision: 0,
                             outputPointSize: 14, paneScrollBehavior: .holdPosition, keyboardFocused: false,
                             isOffline: false, isLoading: true, reservesMarkAsReadSpace: false,
                             topOverlayInset: 60, bottomOverlayInset: 100, paneId: "fixture",

@@ -290,7 +290,7 @@ extension PaneSessionView {
             do {
                 try await Task.sleep(for: .seconds(PaneLiveRefreshPolicy.tickInterval))
             } catch { return }
-            guard appModel.isSceneActive, !session.isLoading else { continue }
+            guard appModel.isSceneActive, !session.isReading else { continue }
             let now = ProcessInfo.processInfo.systemUptime
             guard PaneLiveRefreshPolicy.shouldRead(
                 now: now,

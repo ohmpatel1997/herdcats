@@ -33,6 +33,33 @@ enum PaneOutputPresentation {
             .map(trimmed)
     }
 
+    /// One attributed string for the whole pane so native selection can cross
+    /// lines. Diff lines inside a hunk get a tinted background.
+    static func selectableText(from lines: [ANSIText.Line]) -> AttributedString {
+        var result = AttributedString()
+        var oldHunkLines = 0
+        var newHunkLines = 0
+        for (index, line) in lines.enumerated() {
+            if index > 0 { result.append(AttributedString("\n")) }
+            var attributed = line.attributed
+            let tint = diffTint(
+                for: line.plain,
+                oldHunkLines: &oldHunkLines,
+                newHunkLines: &newHunkLines
+            )
+            if let tint {
+                var background = AttributeContainer()
+                background.backgroundColor = switch tint {
+                case .addition: Theme.diffAdditionBackground
+                case .deletion: Theme.diffDeletionBackground
+                }
+                attributed.mergeAttributes(background, mergePolicy: .keepCurrent)
+            }
+            result.append(attributed)
+        }
+        return result
+    }
+
     /// Presentation-only tint for unified-diff content lines inside a hunk.
     /// Never used to invent chat roles.
     static func diffTint(

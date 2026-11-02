@@ -216,7 +216,7 @@ struct PaneSessionView: View {
     private var outputScrollView: some View {
         PaneOutputScrollView(
             output: output,
-            outputLines: session.outputLines,
+            selectableText: session.selectableOutput,
             outputRevision: session.outputRevision,
             outputPointSize: outputPointSize,
             paneScrollBehavior: paneScrollBehavior,

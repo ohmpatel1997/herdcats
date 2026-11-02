@@ -12,12 +12,15 @@ final class PaneSessionState {
 
     private(set) var output: String = ""
     private(set) var isLoading = false
+    /// In-flight read guard for rapid live pacing; ignored by observation so
+    /// background reads don't invalidate UI observers.
+    @ObservationIgnored private(set) var isReading = false
     private(set) var isSending = false
     private(set) var errorMessage: String?
 
-    /// Trimmed ANSI lines for the pane scroll view (no role translation).
-    private(set) var outputLines: [ANSIText.Line] = []
     private(set) var outputRevision: UInt64 = 0
+    /// Selectable text with diff tint, rebuilt once per `outputRevision`.
+    private(set) var selectableOutput = AttributedString()
 
     private var lastParsedOutput: String?
     private var lastParsedPalette: TerminalPalette?
@@ -44,26 +47,44 @@ final class PaneSessionState {
         }
         lastParsedOutput = output
         lastParsedPalette = palette
-        outputLines = PaneOutputPresentation.trimmedLines(
+        let outputLines = PaneOutputPresentation.trimmedLines(
             from: output,
             palette: palette
         )
+        selectableOutput = PaneOutputPresentation.selectableText(from: outputLines)
         outputRevision &+= 1
     }
 
+    /// Stores a pane read; identical text leaves `output` untouched so
+    /// observers are not invalidated.
+    func applyRead(_ text: String) {
+        guard text != output else { return }
+        output = text
+    }
+
     func reload(_ connection: HerdrConnection) async {
+        await reload { try await connection.paneReadText(paneId: self.pane.paneId) }
+    }
+
+    /// Reloads pane text using a custom reader (test seam). Only marks
+    /// `isLoading = true` when output is initially empty so non-empty views
+    /// avoid two redraws per read.
+    func reload(read: () async throws -> String) async {
         reloadGeneration += 1
         let generation = reloadGeneration
-        isLoading = true
+        isReading = true
+        let wasEmpty = output.isEmpty
+        if wasEmpty { isLoading = true }
         defer {
             if reloadGeneration == generation {
                 isLoading = false
+                isReading = false
             }
         }
         do {
-            let text = try await connection.paneReadText(paneId: pane.paneId)
+            let text = try await read()
             guard reloadGeneration == generation else { return }
-            output = text
+            applyRead(text)
             errorMessage = nil
         } catch {
             guard reloadGeneration == generation else { return }

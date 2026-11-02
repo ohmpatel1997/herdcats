@@ -72,6 +72,9 @@ final class SpacesModel {
     }
 
     var autoRefreshTask: Task<Void, Never>?
+    /// Counts started refreshes so the auto-refresh loop can restart its
+    /// interval after an event-driven or manual refresh.
+    @ObservationIgnored var refreshEpoch = 0
     var usageRefreshTask: Task<Void, Never>?
     enum QuotaContentState: Equatable {
         case loading, cards, notSetup, empty
@@ -127,6 +130,7 @@ final class SpacesModel {
 
     func refresh(_ connection: HerdrConnection) async {
         let generation = refreshGate.begin()
+        refreshEpoch &+= 1
         isLoading = true
 
         // Watchdog: invalidate this generation so a late completion cannot

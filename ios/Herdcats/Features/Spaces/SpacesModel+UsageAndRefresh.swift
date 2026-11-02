@@ -92,15 +92,24 @@ extension SpacesModel {
     func startAutoRefresh(_ connection: HerdrConnection) {
         stopAutoRefresh()
         autoRefreshTask = Task { [weak self] in
+            var clock = SpacesAutoRefreshClock(epoch: self?.refreshEpoch ?? 0)
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(for: .seconds(5))
+                    try await Task.sleep(for: .seconds(SpacesRefreshPolicy.tick))
                 } catch {
                     return
                 }
                 guard let self else { return }
+                clock.advance(epoch: self.refreshEpoch)
                 guard self.autoRefreshEnabled, self.isSceneActive else { continue }
+                let interval = await SpacesRefreshPolicy.interval(
+                    isCoreMode: connection.backend == .core,
+                    eventsOpen: connection.coreEventsOpen
+                )
+                guard clock.isDue(interval: interval) else { continue }
+                clock.didRefresh(epoch: self.refreshEpoch)
                 await self.refresh(connection)
+                clock.seenEpoch = self.refreshEpoch
             }
         }
         // Quota changes slowly; poll independently so the 5s herdr loop stays light.
@@ -190,5 +199,53 @@ enum SpacePresentationOverlay {
     static func unconfirmed(_ pending: [Space], after spaces: [Space]) -> [Space] {
         let listedIDs = Set(spaces.map(\.id))
         return pending.filter { !listedIDs.contains($0.id) }
+    }
+}
+
+/// State machine tracking elapsed auto-refresh time and resets from
+/// out-of-band refreshes (Core events, foreground returns, manual pulls).
+struct SpacesAutoRefreshClock: Equatable {
+    var elapsed: TimeInterval = 0
+    var seenEpoch: Int
+    let tick: TimeInterval
+
+    init(epoch: Int, tick: TimeInterval = SpacesRefreshPolicy.tick) {
+        self.seenEpoch = epoch
+        self.tick = tick
+    }
+
+    mutating func advance(epoch: Int) {
+        if epoch != seenEpoch {
+            elapsed = 0
+        }
+        seenEpoch = epoch
+        elapsed += tick
+    }
+
+    func isDue(interval: TimeInterval) -> Bool {
+        SpacesRefreshPolicy.isDue(elapsed: elapsed, interval: interval)
+    }
+
+    mutating func didRefresh(epoch: Int) {
+        elapsed = 0
+        seenEpoch = epoch
+    }
+}
+
+/// Cadence of the Spaces auto-refresh loop. Core pushes events that already
+/// trigger refreshes, so while its subscription is open the loop only runs a
+/// slow safety refresh.
+enum SpacesRefreshPolicy {
+    /// Wake-up granularity of the loop.
+    static let tick: TimeInterval = 5
+    static let tuiInterval: TimeInterval = 5
+    static let coreSafetyInterval: TimeInterval = 60
+
+    static func interval(isCoreMode: Bool, eventsOpen: Bool) -> TimeInterval {
+        isCoreMode && eventsOpen ? coreSafetyInterval : tuiInterval
+    }
+
+    static func isDue(elapsed: TimeInterval, interval: TimeInterval) -> Bool {
+        elapsed >= interval
     }
 }

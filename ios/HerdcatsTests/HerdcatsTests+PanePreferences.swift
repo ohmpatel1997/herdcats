@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Security
 import NIOSSH
 import SwiftUI
@@ -326,7 +327,7 @@ struct PaneSessionStateTests {
         let scope = ConnectionIdentity(host: "a.local", port: 22, username: "bob")
         let state = PaneSessionState(pane: idle, connectionScope: scope)
 
-        #expect(state.outputLines.isEmpty)
+        #expect(state.selectableOutput.characters.isEmpty)
         #expect(state.outputRevision == 0)
 
         state.updateParsedOutput(palette: TerminalPalette(palette: .moonlit, dark: true))
@@ -349,6 +350,147 @@ struct PaneSessionStateTests {
         #expect(state.outputRevision == mochaRevision)
         state.updateParsedOutput(palette: TerminalPalette(palette: .solarizedDark, dark: true))
         #expect(state.outputRevision == mochaRevision + 1)
+    }
+
+    @MainActor private func makeState() throws -> PaneSessionState {
+        let json = """
+        {"pane_id":"w1:p1","tab_id":"w1:t1","workspace_id":"w1","label":null,\
+        "agent":"claude","agent_status":"idle","cwd":null,\
+        "terminal_title":null,"terminal_title_stripped":null,"focused":false,"revision":1}
+        """
+        let pane = try JSONDecoder().decode(PaneEntry.self, from: Data(json.utf8))
+        return PaneSessionState(pane: pane, connectionScope: ConnectionIdentity(host: "a.local", port: 22, username: "bob"))
+    }
+
+    @Test @MainActor func reloadShowsLoadingOnlyWhileOutputIsEmpty() async throws {
+        let state = try makeState()
+        var loadingDuringFirstRead = false
+        var readingDuringFirstRead = false
+        await state.reload {
+            loadingDuringFirstRead = state.isLoading
+            readingDuringFirstRead = state.isReading
+            return "hello"
+        }
+        #expect(loadingDuringFirstRead)
+        #expect(readingDuringFirstRead)
+        #expect(!state.isLoading)
+        #expect(!state.isReading)
+        #expect(state.output == "hello")
+
+        var loadingDuringSecondRead = true
+        var readingDuringSecondRead = false
+        await state.reload {
+            loadingDuringSecondRead = state.isLoading
+            readingDuringSecondRead = state.isReading
+            return "hello"
+        }
+        #expect(!loadingDuringSecondRead)
+        #expect(readingDuringSecondRead)
+        #expect(!state.isLoading)
+        #expect(!state.isReading)
+    }
+
+    @Test func textViewRendersOnlyWhenRevisionOrFontChanges() {
+        let font = UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        let larger = UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
+        #expect(SelectablePaneOutput.Coordinator.shouldRender(lastRevision: nil, lastFont: nil, revision: 0, font: font))
+        #expect(!SelectablePaneOutput.Coordinator.shouldRender(lastRevision: 3, lastFont: font, revision: 3, font: font))
+        #expect(SelectablePaneOutput.Coordinator.shouldRender(lastRevision: 3, lastFont: font, revision: 4, font: font))
+        #expect(SelectablePaneOutput.Coordinator.shouldRender(lastRevision: 3, lastFont: font, revision: 3, font: larger))
+    }
+
+    @Test @MainActor func identicalReadDoesNotBumpRevisionOrReparse() throws {
+        let json = """
+        {"pane_id":"w1:p1","tab_id":"w1:t1","workspace_id":"w1","label":null,\
+        "agent":"claude","agent_status":"idle","cwd":null,\
+        "terminal_title":null,"terminal_title_stripped":null,"focused":false,"revision":1}
+        """
+        let pane = try JSONDecoder().decode(PaneEntry.self, from: Data(json.utf8))
+        let scope = ConnectionIdentity(host: "a.local", port: 22, username: "bob")
+        let state = PaneSessionState(pane: pane, connectionScope: scope)
+        let palette = TerminalPalette(palette: .moonlit, dark: true)
+
+        state.applyRead("hello\nworld")
+        state.updateParsedOutput(palette: palette)
+        let revision = state.outputRevision
+        #expect(state.output == "hello\nworld")
+
+        let fired = OSAllocatedUnfairLock(initialState: false)
+        withObservationTracking { _ = state.output } onChange: { fired.withLock { $0 = true } }
+        state.applyRead("hello\nworld")
+        #expect(!fired.withLock { $0 })
+        state.updateParsedOutput(palette: palette)
+        #expect(state.outputRevision == revision)
+
+        withObservationTracking { _ = state.output } onChange: { fired.withLock { $0 = true } }
+        state.applyRead("changed")
+        #expect(fired.withLock { $0 })
+        state.applyRead("hello\nworld")
+
+        state.applyRead("hello\nworld!")
+        state.updateParsedOutput(palette: palette)
+        #expect(state.outputRevision == revision + 1)
+    }
+
+    @MainActor private func makeScrollView(output: String, isLoading: Bool) -> PaneOutputScrollView {
+        PaneOutputScrollView(
+            output: output, selectableText: AttributedString(output), outputRevision: 1,
+            outputPointSize: 14, paneScrollBehavior: .holdPosition, keyboardFocused: false,
+            isOffline: false, isLoading: isLoading, reservesMarkAsReadSpace: false,
+            topOverlayInset: 0, bottomOverlayInset: 0, paneId: "p",
+            shouldPinToBottom: .constant(false), onUserScroll: {}, onTapOutput: {}, onSelectionChange: { _ in }
+        )
+    }
+
+    @Test @MainActor func scrollViewEqualityIgnoresLoadingOnlyWhenOutputPresent() {
+        #expect(makeScrollView(output: "text", isLoading: true) == makeScrollView(output: "text", isLoading: false))
+        #expect(makeScrollView(output: "", isLoading: true) != makeScrollView(output: "", isLoading: false))
+    }
+
+    @Test @MainActor func selectableTextMatchesLegacyConstruction() throws {
+        let text = "intro\n@@ -1,2 +1,2 @@\n- old\n+ new\n context\n+++ file\nafter"
+        let lines = PaneOutputPresentation.trimmedLines(
+            from: text, palette: TerminalPalette(palette: .moonlit, dark: true)
+        )
+        var expected = AttributedString()
+        var oldHunk = 0
+        var newHunk = 0
+        for (index, line) in lines.enumerated() {
+            if index > 0 { expected.append(AttributedString("\n")) }
+            var attributed = line.attributed
+            let tint = PaneOutputPresentation.diffTint(
+                for: line.plain, oldHunkLines: &oldHunk, newHunkLines: &newHunk
+            )
+            if let tint {
+                var background = AttributeContainer()
+                background.backgroundColor = tint == .addition
+                    ? Theme.diffAdditionBackground : Theme.diffDeletionBackground
+                attributed.mergeAttributes(background, mergePolicy: .keepCurrent)
+            }
+            expected.append(attributed)
+        }
+        #expect(PaneOutputPresentation.selectableText(from: lines) == expected)
+        // Hard-coded expectation, independent of the legacy algorithm above.
+        func hunkLines(withBackground color: Color) -> [String] {
+            expected.runs.filter { $0.backgroundColor == color }
+                .map { String(expected[$0.range].characters) }
+        }
+        #expect(hunkLines(withBackground: Theme.diffAdditionBackground) == ["+ new"])
+        #expect(hunkLines(withBackground: Theme.diffDeletionBackground) == ["- old"])
+        #expect(expected.runs.filter { $0.backgroundColor != nil }.count == 2)
+        #expect(String(expected.characters) == text)
+
+        let pane = try JSONDecoder().decode(PaneEntry.self, from: Data("""
+        {"pane_id":"w1:p1","tab_id":"w1:t1","workspace_id":"w1","label":null,"agent":null,\
+        "agent_status":"idle","cwd":null,"terminal_title":null,"terminal_title_stripped":null,\
+        "focused":false,"revision":1}
+        """.utf8))
+        let state = PaneSessionState(
+            pane: pane, connectionScope: ConnectionIdentity(host: "a.local", port: 22, username: "bob")
+        )
+        state.applyRead(text)
+        state.updateParsedOutput(palette: TerminalPalette(palette: .moonlit, dark: true))
+        #expect(state.selectableOutput == expected)
     }
 }
 

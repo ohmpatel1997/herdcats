@@ -177,6 +177,31 @@ struct CoreHierarchyTests {
         #expect(hierarchy.panes.first?.paneId == "vps/peer/t1")
     }
 
+    @Test func presentationOrderUsesCreationTimeThenNaturalAddressOrder() throws {
+        func term(_ address: String, created: Int, labelled: Bool) -> String {
+            let labels = labelled ? "{\"herdr.space\":\"sp1\",\"herdr.tab\":\"tb1\"}" : "{}"
+            return "{\"address\":\"\(address)\",\"title\":\"T\",\"state\":\"live\",\"cwd\":\"/p\",\"created_ms\":\(created),\"status\":null,\"reported\":false,\"labels\":\(labels)}"
+        }
+        let terminals = [
+            term("t10", created: 4, labelled: false), term("b", created: 2, labelled: true),
+            term("vps/n", created: 3, labelled: false), term("t2", created: 4, labelled: false),
+            term("a", created: 2, labelled: true), term("c", created: 1, labelled: true),
+            term("vps/m", created: 3, labelled: false), term("z", created: 0, labelled: false)
+        ].joined(separator: ",")
+        let snapshot = try CoreSnapshot(subscription: json("{\"seq\":1,\"terminals\":[\(terminals)]}"))
+        let layout = try json("""
+        {"spaces":[
+          {"id":"sp1","name":"One","tabs":[{"id":"tb1","name":"A","root":{"children":[]}},{"id":"tb2","name":"B","root":{"children":[]}}]},
+          {"id":"sp2","name":"Two","tabs":[{"id":"tb1","name":"C","root":{"children":[]}}]}
+        ]}
+        """)
+        let hierarchy = snapshot.presentation(layout: layout, remoteLayouts: ["vps": layout])
+        // Labelled terminals fill their tab by creation time, ties by natural address order;
+        // the rest follow in the same order under "Other terminals".
+        #expect(hierarchy.panes.map(\.paneId) == ["c", "a", "b", "z", "vps/m", "vps/n", "t2", "t10"])
+        #expect(hierarchy.tabs.map(\.paneCount) == [3, 0, 0, 0, 0, 0, 5])
+    }
+
     private func fixture() throws -> CoreSnapshot {
         try CoreSnapshot(subscription: json("{\"seq\":10,\"terminals\":[\(terminal("t1")),\(terminal("t2", app: "claude-code"))]}"))
     }

@@ -5,7 +5,7 @@ import UIKit
 
 struct PaneOutputScrollView: View, Equatable {
     let output: String
-    let outputLines: [ANSIText.Line]
+    let selectableText: AttributedString
     let outputRevision: UInt64
     let outputPointSize: CGFloat
     let paneScrollBehavior: PaneScrollBehaviorPreference
@@ -40,7 +40,7 @@ struct PaneOutputScrollView: View, Equatable {
 
     init(
         output: String,
-        outputLines: [ANSIText.Line],
+        selectableText: AttributedString,
         outputRevision: UInt64,
         outputPointSize: CGFloat,
         paneScrollBehavior: PaneScrollBehaviorPreference,
@@ -58,7 +58,7 @@ struct PaneOutputScrollView: View, Equatable {
         onDismissKeyboardDrag: (() -> Void)? = nil
     ) {
         self.output = output
-        self.outputLines = outputLines
+        self.selectableText = selectableText
         self.outputRevision = outputRevision
         self.outputPointSize = outputPointSize
         self.paneScrollBehavior = paneScrollBehavior
@@ -84,7 +84,7 @@ struct PaneOutputScrollView: View, Equatable {
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.outputRevision == rhs.outputRevision
-            && lhs.isLoading == rhs.isLoading
+            && ((!lhs.output.isEmpty && !rhs.output.isEmpty) || lhs.isLoading == rhs.isLoading)
             && lhs.isOffline == rhs.isOffline
             && lhs.reservesMarkAsReadSpace == rhs.reservesMarkAsReadSpace
             && lhs.topOverlayInset == rhs.topOverlayInset
@@ -94,30 +94,6 @@ struct PaneOutputScrollView: View, Equatable {
             && lhs.keyboardFocused == rhs.keyboardFocused
             && lhs.shouldPinToBottom == rhs.shouldPinToBottom
             && lhs.paneId == rhs.paneId
-    }
-
-    /// One text view lets the native selection handles cross terminal lines.
-    /// Separate Text views restrict each selection to a single rendered row.
-    private var selectableOutput: AttributedString {
-        var result = AttributedString()
-        var oldHunkLines = 0
-        var newHunkLines = 0
-        for (index, line) in outputLines.enumerated() {
-            if index > 0 { result.append(AttributedString("\n")) }
-            var attributed = line.attributed
-            let tint = PaneOutputPresentation.diffTint(
-                for: line.plain,
-                oldHunkLines: &oldHunkLines,
-                newHunkLines: &newHunkLines
-            )
-            if tint != nil {
-                var background = AttributeContainer()
-                background.backgroundColor = diffBackground(tint)
-                attributed.mergeAttributes(background, mergePolicy: .keepCurrent)
-            }
-            result.append(attributed)
-        }
-        return result
     }
 
     var body: some View {
@@ -131,7 +107,7 @@ struct PaneOutputScrollView: View, Equatable {
                             .padding(.bottom, 4)
                     }
                     SelectablePaneOutput(
-                        text: selectableOutput, pointSize: outputPointSize,
+                        text: selectableText, revision: outputRevision, pointSize: outputPointSize,
                         selectionActive: selectionActive
                     ) { active, safeAreaBottom in
                         if active {
@@ -281,14 +257,6 @@ struct PaneOutputScrollView: View, Equatable {
             }
         }
     }
-
-    private func diffBackground(_ tint: PaneOutputPresentation.DiffTint?) -> Color {
-        switch tint {
-        case .addition: Theme.diffAdditionBackground
-        case .deletion: Theme.diffDeletionBackground
-        case nil: Color.clear
-        }
-    }
 }
 
 /// Whether a keyboard frame, in screen coordinates, is docked: a docked
@@ -353,11 +321,21 @@ struct HostingWindowReader: UIViewRepresentable {
 /// across lines without introducing a second scrolling region or a keyboard.
 struct SelectablePaneOutput: UIViewRepresentable {
     final class Coordinator {
-        var lastText: AttributedString?
+        var lastRevision: UInt64?
         var lastFont: UIFont?
+
+        static func shouldRender(
+            lastRevision: UInt64?,
+            lastFont: UIFont?,
+            revision: UInt64,
+            font: UIFont
+        ) -> Bool {
+            lastRevision != revision || lastFont != font
+        }
     }
 
     let text: AttributedString
+    let revision: UInt64
     let pointSize: CGFloat
     let selectionActive: Bool
     var onSelectionFocusChange: (Bool, CGFloat) -> Void
@@ -394,10 +372,15 @@ struct SelectablePaneOutput: UIViewRepresentable {
     func updateUIView(_ view: PaneOutputTextView, context: Context) {
         view.onSelectionFocusChange = onSelectionFocusChange
         let font = UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
-        guard context.coordinator.lastText != text || context.coordinator.lastFont != font else { return }
+        guard Coordinator.shouldRender(
+            lastRevision: context.coordinator.lastRevision,
+            lastFont: context.coordinator.lastFont,
+            revision: revision,
+            font: font
+        ) else { return }
         // Keep the selected snapshot stable until the reader leaves selection.
         guard !selectionActive || view.selectedRange.length == 0 else { return }
-        context.coordinator.lastText = text
+        context.coordinator.lastRevision = revision
         context.coordinator.lastFont = font
         let boldFont = UIFont.monospacedSystemFont(ofSize: pointSize, weight: .bold)
         let rendered = NSMutableAttributedString(string: "")
