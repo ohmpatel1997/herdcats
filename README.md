@@ -8,9 +8,13 @@
 
 [Website](https://herdcats.dev) · [Join the TestFlight beta](https://testflight.apple.com/join/nUr62QY1)
 
-A native iPhone client for [Herdr](https://herdr.dev). Connect over SSH to
+A native iPhone and iPad client for [Herdr](https://herdr.dev). Connect over SSH to
 browse spaces and agents, read pane output, and send terminal input, composed
 messages, dictation, and photos from your phone.
+
+On iPad and on the unfolded iPhone Duo, Spaces and Agents show the list and the
+selected pane side by side. Folding or narrowing the window keeps the same pane
+open. iPhone stays portrait-only; iPad supports all orientations.
 
 Herdcats uses SwiftUI and Observation on iOS 17 or later. Each SSH connection
 uses **TUI** (the `herdr` CLI) or **Herdr Core** (the `hc connect` API). **Auto**,
@@ -33,6 +37,16 @@ with separate channels so output reads do not block typing. This uses stock
 Herdr and SSH without Python, additional host packages, or an installed helper.
 Hosts that cannot open these channels use the existing SSH command path.
 Input remains acknowledged in order; uncertain sends are never replayed.
+
+Agent panes can also show a native **Timeline** of messages and tool activity,
+with approvals, questions and model controls where the agent supports them. It
+covers Claude, Codex, Agy, Pi and Cursor in TUI mode and needs the optional
+**Herdcats Bridge** on the SSH computer. Install it from the Timeline screen:
+Herdcats downloads the pinned release, verifies its checksum and installs it to
+`~/.local/bin/herdcats-bridge`, with no sudo, background service or agent hooks.
+It runs only while a Timeline is open. Pi also needs the Herdcats Pi extension;
+see [Pi conversations](ios/docs/pi-conversations.md). The terminal view works
+without the bridge.
 
 **Show Compose by Default** is enabled initially, so panes open with the compose
 field and keyboard ready. Turn it off in pane options or Settings → Pane to
@@ -163,8 +177,11 @@ connected machine to show provider quota. It is not required for pane access.
 [GitHub Actions](https://github.com/zhiyao/herdcats/actions) runs on pushes to
 `main`, pull requests, and manual dispatch:
 
-- **iOS:** generate the Xcode project, check attachment-storage behavior, build
-  the app, and run Swift unit tests on an available iPhone simulator.
+- **Bridge:** on macOS and Linux, test, lint and build the Herdcats Bridge
+  release, test its installers, and run the Pi extension tests.
+- **iOS:** generate the Xcode project, check attachment-storage behavior and
+  release preparation, build the app, and run Swift unit tests on an available
+  iPhone simulator.
 - **Web:** install locked dependencies, run server regression tests, and build
   the static website.
 
@@ -172,7 +189,7 @@ These checks require no SSH server, Apple account credentials, or deployment
 secrets. Simulator tests use ad-hoc signing so Keychain tests receive their
 entitlements.
 
-Changes to `main` require a pull request and passing **iOS** and **Web** checks.
+Changes to `main` require a pull request and passing checks.
 Dependabot checks dependencies weekly and opens update pull requests for review.
 For Swift dependency updates, copy the proposed version changes into
 `ios/project.yml`, regenerate with `(cd ios && xcodegen generate)`, and commit
@@ -232,6 +249,12 @@ The capture manifest records the source commit, built app hash, simulator,
 capture time, and PNG hashes. Each screen selects its intended terminal or
 timeline surface independently of earlier captures.
 
+Two more Maestro suites check large-screen layouts in dark mode.
+`ios/bin/maestro-ipad` creates or boots an iPad Pro 13-inch (M5) simulator,
+rotates it to landscape and captures Spaces and Agents. `ios/bin/maestro-duo`
+runs all 12 screens on the outer and inner displays of an already booted
+**iPhone Duo** simulator.
+
 ## Website
 
 The home page, shared navigation, and footer link to `/screenshots`. Before each
@@ -263,8 +286,9 @@ hosted independently of the iPhone app.
 - Backgrounding pauses polling. This is not a general-purpose SSH shell.
 - Host-key changes require manual verification and explicit replacement approval.
   Automatic reconnects remain blocked until approval.
-- Uploaded photos remain under `~/.cache/herdrcat/attachments` on the connected
-  machine until you remove them; the app does not automatically delete them.
+- In TUI mode, uploaded photos remain under `~/.cache/herdrcat/attachments` on
+  the connected machine until you remove them; the app does not automatically
+  delete them. Herdr Core stores uploads through its own `terminal.put` API.
   The legacy `herdrcat` cache name is retained for compatibility with existing uploads.
 - Each machine must be reachable over SSH from your iPhone.
 
