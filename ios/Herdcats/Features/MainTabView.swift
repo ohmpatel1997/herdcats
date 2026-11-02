@@ -326,22 +326,25 @@ struct AgentsScreen: View {
         ScrollView {
             VStack(spacing: 0) {
                 ForEach(0..<6) { index in
-                    HStack(alignment: .top, spacing: QuietListMetrics.columnSpacing) {
+                    // Mirrors AgentListRow: bars take their height from the
+                    // real fonts so a skeleton row is as tall as a loaded one.
+                    HStack(alignment: .listTitleCenter, spacing: QuietListMetrics.columnSpacing) {
                         Circle()
                             .fill(Theme.subtleFill)
                             .frame(width: 9, height: 9)
-                            .frame(width: QuietListMetrics.statusColumn, height: 14)
-                            .padding(.top, 3)
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                skeletonBar(width: index.isMultiple(of: 2) ? 170 : 140, height: 14)
-                                Spacer(minLength: 4)
-                                skeletonBar(width: 48, height: 10)
+                            .frame(width: QuietListMetrics.statusColumn, height: QuietListMetrics.statusColumn)
+                        VStack(alignment: .leading, spacing: QuietListMetrics.lineSpacing) {
+                            HStack(spacing: 6) {
+                                skeletonBar(width: index.isMultiple(of: 2) ? 170 : 140, font: .appHeadlineSm)
+                                Spacer(minLength: 8)
+                                skeletonBar(width: 36, font: .jost(.footnote))
                             }
-                            skeletonBar(width: 120, height: 10)
+                            .alignmentGuide(.listTitleCenter) { $0[VerticalAlignment.center] }
+                            skeletonBar(width: 120, font: .caption.monospaced())
                         }
                     }
-                    .padding(.vertical, 13)
+                    .padding(.vertical, QuietListMetrics.rowVerticalPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .overlay(alignment: .bottom) { QuietListDivider() }
                 }
             }
@@ -355,10 +358,17 @@ struct AgentsScreen: View {
         .accessibilityIdentifier("agent-list-loading")
     }
 
-    private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
-        RoundedRectangle.continuous(DesignSystem.CornerRadius.sm)
-            .fill(Theme.subtleFill)
-            .frame(width: width, height: height)
+    /// A placeholder bar exactly one line of `font` tall, inset like the glyphs.
+    private func skeletonBar(width: CGFloat, font: Font) -> some View {
+        Text(" ")
+            .font(font)
+            .hidden()
+            .frame(width: width)
+            .background {
+                RoundedRectangle.continuous(DesignSystem.CornerRadius.sm)
+                    .fill(Theme.subtleFill)
+                    .padding(.vertical, 3)
+            }
     }
 
     @ViewBuilder
@@ -476,7 +486,7 @@ struct AgentListRow: View {
         HStack(alignment: .listTitleCenter, spacing: QuietListMetrics.columnSpacing) {
             StatusDot(status: item.status)
                 .accessibilityLabel(item.status.label)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: QuietListMetrics.lineSpacing) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(item.title)
                         .font(.appHeadlineSm)
@@ -505,7 +515,7 @@ struct AgentListRow: View {
                 .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 11)
+        .padding(.vertical, QuietListMetrics.rowVerticalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background { RowHighlight(isActive: false, isSelected: isSelected) }

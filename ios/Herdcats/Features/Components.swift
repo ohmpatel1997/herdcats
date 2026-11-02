@@ -276,6 +276,9 @@ extension VerticalAlignment {
 enum QuietListMetrics {
     static let statusColumn: CGFloat = 14
     static let columnSpacing: CGFloat = 10
+    /// Gap between a row's title line and its detail line.
+    static let lineSpacing: CGFloat = 4
+    static let rowVerticalPadding: CGFloat = 11
     static var titleInset: CGFloat { statusColumn + columnSpacing }
 }
 
