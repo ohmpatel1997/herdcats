@@ -38,6 +38,21 @@ function Phone({source, sw, sh, width, left, top, rotation = 0}) {
   </div>;
 }
 
+function Tablet({source, sw, sh, width, left, top, rotation = 0}) {
+  const bezel = width * 0.016;
+  const screenWidth = width - bezel * 2;
+  const screenHeight = screenWidth * sh / sw;
+  const radius = width * 0.034;
+  return <div style={{position: 'absolute', left, top, width, height: screenHeight + bezel * 2, padding: bezel,
+    boxSizing: 'border-box', borderRadius: radius, background: PALETTE.night800,
+    border: `${width * 0.003}px solid ${PALETTE.night900}`, transform: `rotate(${rotation}deg)`, transformOrigin: '50% 50%'}}>
+    <div style={{position: 'relative', width: screenWidth, height: screenHeight, overflow: 'hidden',
+      borderRadius: radius - bezel, background: '#000', outline: `${width * 0.004}px solid ${PALETTE.night950}`}}>
+      <Img src={staticFile(source)} style={{display: 'block', width: screenWidth, height: screenHeight}} />
+    </div>
+  </div>;
+}
+
 function Wordmark({size}) {
   return <div style={{display: 'flex', alignItems: 'center', gap: size * 0.28}}>
     <Img src={staticFile('logo.png')} style={{width: size * 1.1, height: size * 1.1, borderRadius: '50%',
@@ -51,14 +66,16 @@ export function ProductHeader({sources, sizes}) {
   return <AbsoluteFill style={{overflow: 'hidden', fontFamily: font}}>
     <style>{fontFace}</style>
     <Scenery width={W} height={H} horizon={H * 0.86} pixel={10} moon={{x: W * 0.64, y: H * 0.3, r: 190}} />
-    <div style={{position: 'absolute', left: 900, top: 340, width: 1500}}>
+    <div style={{position: 'absolute', left: 240, top: 340, width: 1300}}>
       <Wordmark size={190} />
       <div style={{marginTop: 70, fontSize: 112, fontWeight: 600, lineHeight: 1.1, letterSpacing: -2,
         color: PALETTE.paper50}}>Tame your agents</div>
       <div style={{fontSize: 112, fontWeight: 600, lineHeight: 1.1, letterSpacing: -2,
         color: PALETTE.mint200}}>from your pocket.</div>
     </div>
-    <Phone source={sources.main} sw={sizes.main.width} sh={sizes.main.height} width={800} left={2440} top={260} />
+    <Tablet source={sources.ipad} sw={sizes.ipad.width} sh={sizes.ipad.height} width={1150} left={1480} top={230} />
+    <Tablet source={sources.duo} sw={sizes.duo.width} sh={sizes.duo.height} width={1000} left={2110} top={640} />
+    <Phone source={sources.phone} sw={sizes.phone.width} sh={sizes.phone.height} width={560} left={3120} top={300} />
   </AbsoluteFill>;
 }
 
@@ -72,12 +89,13 @@ export function SearchResult({sources, sizes}) {
       <div>Your AI agents,</div>
       <div style={{color: PALETTE.mint200}}>in your pocket.</div>
     </div>
-    <Phone source={sources.main} sw={sizes.main.width} sh={sizes.main.height} width={1000} left={820} top={900} rotation={-4} />
-    <Phone source={sources.second} sw={sizes.second.width} sh={sizes.second.height} width={1000} left={2020} top={1040} rotation={4} />
+    <Tablet source={sources.ipad} sw={sizes.ipad.width} sh={sizes.ipad.height} width={1400} left={100} top={1080} rotation={-3} />
+    <Tablet source={sources.duo} sw={sizes.duo.width} sh={sizes.duo.height} width={1250} left={2410} top={1260} rotation={3} />
+    <Phone source={sources.phone} sw={sizes.phone.width} sh={sizes.phone.height} width={820} left={1510} top={900} />
   </AbsoluteFill>;
 }
 
-export function OgCard() {
+export function OgCard({sources, sizes}) {
   const W = 1200, H = 630;
   return <AbsoluteFill style={{overflow: 'hidden', fontFamily: font}}>
     <style>{fontFace}</style>
@@ -86,19 +104,22 @@ export function OgCard() {
       display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
       <Wordmark size={72} />
       <div style={{marginTop: 28, fontSize: 42, fontWeight: 600, lineHeight: 1.2, letterSpacing: -1,
-        color: PALETTE.paper50}}>Native iPhone client</div>
+        color: PALETTE.paper50}}>Native iPhone &amp; iPad</div>
       <div style={{fontSize: 42, fontWeight: 600, lineHeight: 1.2, letterSpacing: -1,
-        color: PALETTE.mint200}}>for Herdr</div>
+        color: PALETTE.mint200}}>client for Herdr</div>
     </div>
+    <Tablet source={sources.ipad} sw={sizes.ipad.width} sh={sizes.ipad.height} width={320} left={560} top={290} />
+    <Tablet source={sources.duo} sw={sizes.duo.width} sh={sizes.duo.height} width={290} left={750} top={420} />
+    <Phone source={sources.phone} sw={sizes.phone.width} sh={sizes.phone.height} width={140} left={1040} top={300} />
   </AbsoluteFill>;
 }
 
 export function CreativeRoot() {
-  const props = {sources: {main: 'spaces.png', second: 'agents.png'},
-    sizes: {main: {width: 1320, height: 2868}, second: {width: 1320, height: 2868}}};
+  const props = {sources: {phone: 'phone.png', ipad: 'ipad.png', duo: 'duo.png'},
+    sizes: {phone: {width: 1320, height: 2868}, ipad: {width: 2752, height: 2064}, duo: {width: 2853, height: 2007}}};
   return <>
     <Still id="ProductHeader" component={ProductHeader} width={3840} height={1646} defaultProps={props} />
     <Still id="SearchResult" component={SearchResult} width={3840} height={2560} defaultProps={props} />
-    <Still id="OgCard" component={OgCard} width={1200} height={630} />
+    <Still id="OgCard" component={OgCard} width={1200} height={630} defaultProps={props} />
   </>;
 }

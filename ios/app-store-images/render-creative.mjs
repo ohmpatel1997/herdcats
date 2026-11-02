@@ -6,7 +6,8 @@ import {parseArgs} from 'node:util';
 // Renders App Store creatives and/or the site OG card.
 // Usage:
 //   node render-creative.mjs --og-only
-//   node render-creative.mjs [--input=<dir with 03_spaces.png and 06_agents.png>] [--output=<dir>]
+//   node render-creative.mjs [--input=<dir with iPhone 03_spaces.png>] [--output=<dir>]
+// iPad and iPhone Duo screens come from ios/maestro/screenshots-output/{ipad,iphone-duo/inner}.
 const packageDir = path.dirname(fileURLToPath(import.meta.url));
 const iosDir = path.dirname(packageDir);
 const repoDir = path.dirname(iosDir);
@@ -38,21 +39,25 @@ const publicDir = path.join(work, 'public');
 await mkdir(publicDir, {recursive: true});
 await copyFile(path.join(repoDir, 'web/public/assets/logo.png'), path.join(publicDir, 'logo.png'));
 
-if (!ogOnly) {
-  const sizes = {
-    main: await pngSize(path.join(input, '03_spaces.png')),
-    second: await pngSize(path.join(input, '06_agents.png')),
-  };
-  for (const [name, {width, height}] of Object.entries(sizes)) {
-    if (width < 600 || height / width < 1.9 || height / width > 2.3) {
-      throw new Error(`${name}: expected a full portrait iPhone capture, got ${width}x${height}.`);
-    }
-  }
-  inputProps = {sources: {main: 'spaces.png', second: 'agents.png'}, sizes};
-  await copyFile(path.join(input, '03_spaces.png'), path.join(publicDir, 'spaces.png'));
-  await copyFile(path.join(input, '06_agents.png'), path.join(publicDir, 'agents.png'));
-  await mkdir(parent, {recursive: true});
+const phoneSource = ogOnly
+  ? path.join(repoDir, 'assets/screenshots/01-spaces.png')
+  : path.join(input, '03_spaces.png');
+const sourceFiles = {
+  phone: phoneSource,
+  ipad: path.join(iosDir, 'maestro/screenshots-output/ipad/03_spaces.png'),
+  duo: path.join(iosDir, 'maestro/screenshots-output/iphone-duo/inner/03_spaces.png'),
+};
+const sizes = {};
+for (const [name, file] of Object.entries(sourceFiles)) {
+  sizes[name] = await pngSize(file);
+  const {width, height} = sizes[name];
+  const ratio = height / width;
+  const ok = name === 'phone' ? width >= 600 && ratio >= 1.9 && ratio <= 2.3 : width >= 1600 && ratio >= 0.6 && ratio <= 0.85;
+  if (!ok) throw new Error(`${name}: unexpected capture size ${width}x${height} (${file}).`);
+  await copyFile(file, path.join(publicDir, `${name}.png`));
 }
+inputProps = {sources: {phone: 'phone.png', ipad: 'ipad.png', duo: 'duo.png'}, sizes};
+if (!ogOnly) await mkdir(parent, {recursive: true});
 
 const output = ogOnly
   ? null

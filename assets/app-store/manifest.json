@@ -2,16 +2,18 @@
   "appearance": "dark",
   "sources": {
     "03_spaces.png": "65dc531efe90094e1be3822c63d690664815b37775c9465e6a6a00a141791598",
-    "06_agents.png": "2d9f314384a51366b98b6648a9d9aa0af875cc3841d94f73a4b6bcf74d402077"
+    "06_agents.png": "2d9f314384a51366b98b6648a9d9aa0af875cc3841d94f73a4b6bcf74d402077",
+    "ipad/03_spaces.png": "5c1084308f8505de4359b9ad153ae142a3ec27a631a9818b1f46afca5374c1d9",
+    "iphone-duo/inner/03_spaces.png": "eb34b879ead01c73356b288a3d34114f4b93f19204616561d2d12e46e9712d24"
   },
   "images": [
     {
       "file": "product-page-header.png",
-      "sha256": "d55b45e770322cd63c14b67a7ac84a0bf6697005f88ee04d8b2e7eb406a9f71a"
+      "sha256": "63041b6fb77e2b21bca45e8b5fc099b1d0f59bc3935cdec0528fa86ac8afc492"
     },
     {
       "file": "search-results.png",
-      "sha256": "637bac8b13cfed167c80d15f162078cf4c27c0e911732769dba9c4258ed9f88b"
+      "sha256": "d9dd5c98b50bdc79074a86a902530184dc36f52f5988bc104c2e157b2800b560"
     }
   ]
 }
