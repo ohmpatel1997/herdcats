@@ -299,6 +299,27 @@ struct AutoConnectAndOfflineStatusBarTests {
     }
 
     @MainActor
+    @Test func lastConnectMatchesTheSavedEntryItWasFor() async {
+        let config = ConnectionConfig(host: "Mac.example", port: 22, username: "tester", auth: .password("fixture"))
+        let entry = RecentConnection(host: "mac.example", port: 22, username: "tester", authMode: "password", remember: true)
+        let model = AppModel(autoConnectOnLaunch: false)
+        #expect(!model.lastConnectWasFor(entry))
+        guard let state = await model.prepareConnectAttempt(config: config) else {
+            Issue.record("Could not prepare the connect attempt")
+            return
+        }
+        state.watchdog.cancel()
+        #expect(model.lastConnectWasFor(entry))
+        var core = entry
+        core.backend = .core
+        #expect(!model.lastConnectWasFor(core))
+        var otherUser = entry
+        otherUser.username = "other"
+        #expect(!model.lastConnectWasFor(otherUser))
+        await model.disconnect()
+    }
+
+    @MainActor
     @Test func sessionReadinessOnlyClassifiesMissingDefaultSession() {
         let serverError = HerdrError.api(code: "session_unavailable", message: "No default session")
         #expect(AppModel.sessionReadinessError(serverError) as? HerdrError == .sessionUnavailable)

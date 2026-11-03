@@ -794,7 +794,7 @@ extension SavedConnectionWorkflowTests {
         #expect(saved.first { $0.id == original.id }?.backend == savedRuntime)
     }
 
-    @Test func connectWithInstalledRuntimeUsesASavedEntryWithoutRewritingIt() throws {
+    @Test func connectWithInstalledRuntimeKeepsASavedEntrysPassword() throws {
         let suite = "InstalledRuntimeSaved.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -804,10 +804,16 @@ extension SavedConnectionWorkflowTests {
         defaults.set(try JSONEncoder().encode([entry, core]), forKey: RecentConnectionStore.storageKey)
         try KeychainStore.save("core-secret", account: core.secretAccount, using: keychain)
 
-        // The TUI sign-in has no saved password here, so it must not overwrite Core's.
-        let sibling = try ConnectionSignIn(entry: entry).siblingToConnect(.core, defaults: defaults, using: keychain)
+        // A password typed in the sign-in sheet with "Save credentials" off.
+        var typed = ConnectionSignIn(entry: entry, secret: "typed")
+        typed.entry.remember = false
+        let sibling = try typed.siblingToConnect(.core, defaults: defaults, using: keychain)
         #expect(sibling.entry.id == core.id)
         #expect(sibling.entry.backend == .core)
+        #expect(sibling.entry.remember)
+        #expect(sibling.secret == "typed")
+        // Preparing the connect, as the sheet does next, leaves Core's saved password alone.
+        try sibling.prepareAttempt(defaults: defaults, using: keychain)
         #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain).map(\.id) == [entry.id, core.id])
         #expect(try KeychainStore.load(account: core.secretAccount, using: keychain) == "core-secret")
     }

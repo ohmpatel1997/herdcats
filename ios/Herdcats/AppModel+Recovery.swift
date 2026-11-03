@@ -11,6 +11,22 @@ extension AppModel {
         connectionIdentity = ConnectionIdentity(config)
     }
 
+    /// Whether the last connect attempt was for `entry`'s machine and runtime.
+    func lastConnectWasFor(_ entry: RecentConnection) -> Bool {
+        guard let activeConfig else { return false }
+        let shown = ConnectionIdentity(host: entry.host, port: entry.port, username: entry.username, backend: entry.backend)
+        // The stored form ignores the case of the host name.
+        return ConnectionIdentity(activeConfig).storageKey == shown.storageKey
+    }
+
+    /// Shows `message` as a plain error in place of a Herdr recovery card.
+    func showPlainError(_ message: String) {
+        herdrMissingOnLastConnect = false
+        runtimeMismatchOnLastConnect = nil
+        herdrSessionUnavailableOnLastConnect = false
+        lastError = message
+    }
+
     func checkSessionReadiness() async throws {
         // --version confirms the binary only; a space query confirms the
         // default session is ready for the screens we present next.

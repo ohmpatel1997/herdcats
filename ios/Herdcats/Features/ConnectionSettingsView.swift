@@ -384,28 +384,24 @@ struct ConnectionSettingsView: View {
     /// The missing-runtime card's button, offered when the failed connection is
     /// this form's machine and runtime.
     var connectWithInstalledRuntimeAction: (() -> Void)? {
-        guard !isReplay, let mismatch = appModel.runtimeMismatchOnLastConnect, let config = appModel.activeConfig else {
-            return nil
-        }
-        let shown = ConnectionIdentity(host: destination.host, port: destination.port,
-                                       username: destination.username, backend: destination.backend)
-        guard ConnectionIdentity(config).storageKey == shown.storageKey else { return nil }
+        guard !isReplay, let mismatch = appModel.runtimeMismatchOnLastConnect,
+              appModel.lastConnectWasFor(destination) else { return nil }
         return { Task { await connectWithInstalledRuntime(mismatch.installed) } }
     }
 
     /// Saves the runtime the machine has as a second entry, unless one is saved
-    /// already, then connects with it. The entry this form shows stays as it was.
+    /// already, then switches this form to it and connects. The saved entry for
+    /// the missing runtime is not changed.
     func connectWithInstalledRuntime(_ installed: ConnectionBackend) async {
         guard !isConnecting, credentialLoadError == nil else { return }
         do {
+            // Saving it first means the form picks that entry below. In edit mode,
+            // switching the runtime alone would move this entry to the other runtime.
             _ = try signIn().siblingToConnect(installed)
         } catch {
-            // Show the error in place of the card.
-            appModel.herdrMissingOnLastConnect = false
-            appModel.lastError = error.localizedDescription
+            appModel.showPlainError(error.localizedDescription)
             return
         }
-        // The form now resolves to the entry for this runtime, so connecting saves that one.
         backend = installed
         await connect()
     }

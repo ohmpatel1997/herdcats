@@ -780,14 +780,19 @@ struct ConnectionSignIn: Identifiable {
     /// For connecting with the runtime the machine has when this one is missing:
     /// this sign-in for the server's `backend` entry. If the server has no such
     /// entry yet, it is saved first with this sign-in. Entries that are already
-    /// saved, including this one, are not changed.
+    /// saved, including this one, are not changed here.
     func siblingToConnect(_ backend: ConnectionBackend, defaults: UserDefaults = .standard,
                           using keychain: KeychainOperations = KeychainStore.operations) throws -> Self {
         let entries = try RecentConnectionStore.load(defaults: defaults, using: keychain)
-        guard entries.contains(where: { RecentConnectionStore.sameServer($0, entry) && $0.backend == backend }) else {
+        guard let saved = entries.first(where: { RecentConnectionStore.sameServer($0, entry) && $0.backend == backend }) else {
             return try persistSibling(backend, defaults: defaults, using: keychain)
         }
-        return resolving(backend, in: entries)
+        var value = resolving(backend, in: entries)
+        // Keep the saved entry's choice about saving credentials. Otherwise this
+        // sign-in's choice would apply to it, and preparing the attempt with
+        // "Save credentials" off would delete the password saved for it.
+        value.entry.remember = saved.remember
+        return value
     }
 
     func prepareAttempt(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations) throws {

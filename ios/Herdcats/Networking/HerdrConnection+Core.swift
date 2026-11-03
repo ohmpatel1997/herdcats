@@ -51,18 +51,12 @@ extension HerdrConnection {
         return Self.detectedBackends(String(buffer: buffer))
     }
 
-    /// What Core startup reports when the channel closes before Core replies.
-    /// A machine without `hc` fails this way too: its start command exits at
-    /// once, and the message it prints goes to stderr, which is not read.
-    static let coreStartupClosedMessage = "Could not open Herdr Core on this machine. "
-        + "Check that hc is installed and its Core session is available, then reconnect using Core."
-
     /// Whether the saved runtime's first check failed the way it does when
     /// that runtime isn't installed.
     static func mayMeanRuntimeIsMissing(_ error: Error, backend: ConnectionBackend) -> Bool {
         switch backend {
         case .tui: (error as? HerdrError) == .herdrNotFound
-        case .core: (error as? HerdrError) == .invalidConfiguration(coreStartupClosedMessage)
+        case .core: (error as? HerdrError) == .coreStartupClosed
         }
     }
 
@@ -133,7 +127,7 @@ extension HerdrConnection {
             if coreSessionID == token { closeCore() }
             await rpc.close()
             if startupFailed, (error as? CoreRPCError) == .closed {
-                throw HerdrError.invalidConfiguration(Self.coreStartupClosedMessage)
+                throw HerdrError.coreStartupClosed
             }
             throw error
         }

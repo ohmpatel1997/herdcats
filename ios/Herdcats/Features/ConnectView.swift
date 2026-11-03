@@ -358,19 +358,11 @@ struct ConnectView: View {
         } catch { appModel.lastError = error.localizedDescription }
     }
 
-    /// The saved machine entry of the connection that just failed.
-    private var failedEntry: RecentConnection? {
-        guard let config = appModel.activeConfig else { return nil }
-        let failed = ConnectionIdentity(config).storageKey
-        return recentConnections.first {
-            ConnectionIdentity(host: $0.host, port: $0.port, username: $0.username, backend: $0.backend).storageKey == failed
-        }
-    }
-
     /// The missing-runtime card's button, offered when the failed connection is
     /// one of the machines listed here.
     private var connectWithInstalledRuntimeAction: (() -> Void)? {
-        guard !replay, let mismatch = appModel.runtimeMismatchOnLastConnect, let entry = failedEntry else { return nil }
+        guard !replay, let mismatch = appModel.runtimeMismatchOnLastConnect,
+              let entry = recentConnections.first(where: { appModel.lastConnectWasFor($0) }) else { return nil }
         return { Task { await connectWithInstalledRuntime(mismatch.installed, from: entry) } }
     }
 
@@ -389,11 +381,7 @@ struct ConnectView: View {
             let sibling = try value.siblingToConnect(backend)
             recentConnections = try RecentConnectionStore.load()
             await connectSaved(recentConnections.first { $0.id == sibling.entry.id } ?? sibling.entry)
-        } catch {
-            // Show the error in place of the card.
-            appModel.herdrMissingOnLastConnect = false
-            appModel.lastError = error.localizedDescription
-        }
+        } catch { appModel.showPlainError(error.localizedDescription) }
     }
 
     private func dial(_ value: ConnectionSignIn) async {
@@ -418,6 +406,8 @@ struct MissingHerdrRecoveryCard: View {
     var mismatch: AppModel.RuntimeMismatch?
     /// Connects with the runtime the machine has. The card shows the button only when this is set.
     var onConnect: (() -> Void)?
+    /// Opens the setup steps when Herdr was not found. When the machine has the
+    /// other runtime, the card opens that runtime's steps itself.
     let onSetup: () -> Void
     @State private var showingInstalledRuntimeSetup = false
 
@@ -785,10 +775,7 @@ struct SavedConnectionSignInView: View {
 
     /// The last connect failed for this sign-in's machine and runtime.
     private var canConnectWithInstalledRuntime: Bool {
-        guard switcher == nil, !replay, let config = appModel.activeConfig else { return false }
-        let shown = ConnectionIdentity(host: value.entry.host, port: value.entry.port,
-                                       username: value.entry.username, backend: value.entry.backend)
-        return ConnectionIdentity(config).storageKey == shown.storageKey
+        switcher == nil && !replay && appModel.lastConnectWasFor(value.entry)
     }
 
     /// Saves the runtime the machine has as a second entry, unless one is saved
@@ -798,9 +785,7 @@ struct SavedConnectionSignInView: View {
         do {
             value = try value.siblingToConnect(backend)
         } catch {
-            // Show the error in place of the missing-runtime note.
-            appModel.herdrMissingOnLastConnect = false
-            appModel.lastError = error.localizedDescription
+            appModel.showPlainError(error.localizedDescription)
             return
         }
         await connect()
