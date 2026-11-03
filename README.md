@@ -21,6 +21,9 @@ uses **TUI** (the `herdr` CLI) or **Herdr Core** (the `hc connect` API). **Auto*
 the default for new machines, detects both and saves each one it finds. A
 machine with both appears once in your lists and connects with the runtime you
 used last; switch runtime from the machine menu. Existing connections remain TUI.
+If a connection's runtime isn't installed on the machine but the other one is,
+Herdcats says so and offers to connect with the one it found. It saves that as a
+second entry for the machine and never switches on its own.
 
 Herdr Core mode needs no Herdcats bridge. It shows desktop spaces and tabs when
 their layout is available, plus **Other terminals** for standalone or ungrouped

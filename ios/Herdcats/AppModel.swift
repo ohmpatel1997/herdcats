@@ -40,6 +40,13 @@ final class AppModel {
     var lastError: String?
     var connectionProgressMessage = "Connecting…"
     var herdrMissingOnLastConnect = false
+    /// The connection's saved runtime isn't on the machine, but the other one is.
+    struct RuntimeMismatch: Equatable {
+        let saved: ConnectionBackend
+        let installed: ConnectionBackend
+    }
+    /// Set with `herdrMissingOnLastConnect` when the machine has the other runtime.
+    var runtimeMismatchOnLastConnect: RuntimeMismatch?
     var herdrSessionUnavailableOnLastConnect = false
     var herdrVersion: String?
     var connectionIdentity: ConnectionIdentity?

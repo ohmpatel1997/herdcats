@@ -764,8 +764,9 @@ struct ConnectionSignIn: Identifiable {
     }
 
     /// Saves this sign-in as the server's `backend` runtime, reusing its entry when saved.
+    @discardableResult
     func persistSibling(_ backend: ConnectionBackend, defaults: UserDefaults = .standard,
-                        using keychain: KeychainOperations = KeychainStore.operations) throws {
+                        using keychain: KeychainOperations = KeychainStore.operations) throws -> Self {
         let entries = try RecentConnectionStore.load(defaults: defaults, using: keychain)
         let saved = entries.first { RecentConnectionStore.sameServer($0, entry) && $0.backend == backend }
         var sibling = self
@@ -773,6 +774,20 @@ struct ConnectionSignIn: Identifiable {
             authMode: entry.authMode, remember: entry.remember, name: entry.name,
             lastConnectedAt: saved?.lastConnectedAt, backend: backend)
         try sibling.persist(defaults: defaults, using: keychain, connected: false, updateName: true)
+        return sibling
+    }
+
+    /// For connecting with the runtime the machine has when this one is missing:
+    /// this sign-in for the server's `backend` entry. If the server has no such
+    /// entry yet, it is saved first with this sign-in. Entries that are already
+    /// saved, including this one, are not changed.
+    func siblingToConnect(_ backend: ConnectionBackend, defaults: UserDefaults = .standard,
+                          using keychain: KeychainOperations = KeychainStore.operations) throws -> Self {
+        let entries = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+        guard entries.contains(where: { RecentConnectionStore.sameServer($0, entry) && $0.backend == backend }) else {
+            return try persistSibling(backend, defaults: defaults, using: keychain)
+        }
+        return resolving(backend, in: entries)
     }
 
     func prepareAttempt(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations) throws {

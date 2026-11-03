@@ -29,6 +29,8 @@ extension AppModel {
             // their own command deadlines and must report their own errors.
             state.watchdog.cancel()
             isCheckingHerdr = true
+            // Auto looks for both runtimes up front. A saved runtime is checked on its own.
+            let usesSavedRuntime = !config.detectsBackend
             if config.detectsBackend {
                 connectionProgressMessage = "Detecting Herdr…"
                 let found = try await connection.detectBackends()
@@ -49,7 +51,27 @@ extension AppModel {
             print("[HC] ssh connected, checking herdr…")
             #endif
 
-            let version = try await connection.serverVersion(timeoutPolicy: .teardownSilently)
+            let version: String
+            do {
+                version = try await connection.serverVersion(timeoutPolicy: .teardownSilently)
+            } catch {
+                guard usesSavedRuntime, HerdrConnection.mayMeanRuntimeIsMissing(error, backend: config.backend) else {
+                    throw error
+                }
+                // The saved runtime seems to be missing. Look for both runtimes on this
+                // connection, so the error can name the one the machine has instead.
+                guard ownership.isCurrent(state.attempt) else {
+                    connection.forceClose(generation: generation)
+                    return
+                }
+                connectionProgressMessage = "Detecting Herdr…"
+                let found = try? await connection.detectBackends(expected: generation)
+                guard ownership.isCurrent(state.attempt) else {
+                    connection.forceClose(generation: generation)
+                    return
+                }
+                throw HerdrConnection.missingRuntimeError(error, saved: config.backend, found: found)
+            }
             #if DEBUG
             print("[HC] herdr version: \(version)")
             #endif
@@ -165,7 +187,13 @@ extension AppModel {
             }
             lastConnectNeedsSignIn = Self.needsSignIn(after: error)
             lastError = message
-            herdrMissingOnLastConnect = (error as? HerdrError) == .herdrNotFound
+            if case let .runtimeNotInstalled(saved, available)? = error as? HerdrError {
+                herdrMissingOnLastConnect = true
+                runtimeMismatchOnLastConnect = available.map { RuntimeMismatch(saved: saved, installed: $0) }
+            } else {
+                herdrMissingOnLastConnect = (error as? HerdrError) == .herdrNotFound
+                runtimeMismatchOnLastConnect = nil
+            }
             herdrSessionUnavailableOnLastConnect = (error as? HerdrError) == .sessionUnavailable
             switch Self.connectFailureDisposition(
                 error: error,
@@ -225,8 +253,10 @@ extension AppModel {
         isCheckingHerdr: Bool
     ) -> ConnectFailureDisposition {
         if error is OpenSSHKeyError { return .readinessRecovery }
-        let herdrError = error as? HerdrError
-        let needsReadinessRecovery = herdrError == .herdrNotFound || herdrError == .sessionUnavailable
+        let needsReadinessRecovery = switch error as? HerdrError {
+        case .herdrNotFound?, .runtimeNotInstalled?, .sessionUnavailable?: true
+        default: false
+        }
         if isCheckingHerdr && (!wasOffline || !hadActiveSession || needsReadinessRecovery) {
             return .readinessRecovery
         }

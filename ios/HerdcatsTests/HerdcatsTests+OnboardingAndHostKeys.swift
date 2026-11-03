@@ -237,7 +237,9 @@ struct AutoConnectAndOfflineStatusBarTests {
 
     @MainActor
     @Test func unrecoverableReadinessErrorsRouteToRecovery() async {
-        for error in [HerdrError.herdrNotFound, .sessionUnavailable] {
+        for error in [HerdrError.herdrNotFound, .sessionUnavailable,
+                      .runtimeNotInstalled(saved: .tui, available: .core),
+                      .runtimeNotInstalled(saved: .core, available: nil)] {
             let config = ConnectionConfig(
                 host: "offline.example", port: 22, username: "tester", auth: .password("fixture")
             )
@@ -264,6 +266,36 @@ struct AutoConnectAndOfflineStatusBarTests {
             wasOffline: false,
             isCheckingHerdr: true
         ) == .readinessRecovery)
+    }
+
+    @MainActor
+    @Test func missingRuntimeRecoveryNamesTheRuntimeTheMachineHas() async {
+        let config = ConnectionConfig(host: "mac.example", port: 22, username: "tester", auth: .password("fixture"))
+        let cases: [(HerdrError, AppModel.RuntimeMismatch?)] = [
+            (.runtimeNotInstalled(saved: .tui, available: .core), AppModel.RuntimeMismatch(saved: .tui, installed: .core)),
+            (.runtimeNotInstalled(saved: .core, available: .tui), AppModel.RuntimeMismatch(saved: .core, installed: .tui)),
+            (.runtimeNotInstalled(saved: .tui, available: nil), nil)
+        ]
+        for (error, mismatch) in cases {
+            let model = AppModel(autoConnectOnLaunch: false)
+            guard let state = await model.prepareConnectAttempt(config: config) else {
+                Issue.record("Could not prepare the connect attempt")
+                return
+            }
+            state.watchdog.cancel()
+            model.handleConnectFailure(
+                error, config: config, attempt: state.attempt,
+                wasOffline: state.wasOffline, isCheckingHerdr: true
+            )
+            #expect(model.herdrMissingOnLastConnect)
+            #expect(model.runtimeMismatchOnLastConnect == mismatch)
+            #expect(!model.lastConnectNeedsSignIn)
+            #expect(model.phase == .disconnected)
+            // The next attempt starts without the old recovery state.
+            model.prepareConnectionStatus(for: config)
+            #expect(!model.herdrMissingOnLastConnect)
+            #expect(model.runtimeMismatchOnLastConnect == nil)
+        }
     }
 
     @MainActor

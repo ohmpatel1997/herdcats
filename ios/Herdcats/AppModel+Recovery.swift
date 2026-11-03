@@ -6,6 +6,7 @@ extension AppModel {
         lastError = nil
         connectionProgressMessage = "Signing in over SSH…"
         herdrMissingOnLastConnect = false
+        runtimeMismatchOnLastConnect = nil
         herdrSessionUnavailableOnLastConnect = false
         connectionIdentity = ConnectionIdentity(config)
     }

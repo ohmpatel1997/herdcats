@@ -146,7 +146,12 @@ struct ConnectionSettingsView: View {
                     if let switchConnectionError { ErrorBanner(message: switchConnectionError) }
                     if switcher == nil, let error = appModel.lastError {
                         if appModel.herdrMissingOnLastConnect {
-                            MissingHerdrRecoveryCard(inForm: true) { showingSetupGuide = true }
+                            MissingHerdrRecoveryCard(
+                                inForm: true,
+                                mismatch: appModel.runtimeMismatchOnLastConnect,
+                                onConnect: connectWithInstalledRuntimeAction,
+                                onSetup: { showingSetupGuide = true }
+                            )
                         } else if appModel.herdrSessionUnavailableOnLastConnect {
                             SessionRecoveryCard(inForm: true)
                         } else {
@@ -374,6 +379,35 @@ struct ConnectionSettingsView: View {
             if switcher != nil { switchConnectionError = error.localizedDescription }
             else { appModel.lastError = error.localizedDescription }
         }
+    }
+
+    /// The missing-runtime card's button, offered when the failed connection is
+    /// this form's machine and runtime.
+    var connectWithInstalledRuntimeAction: (() -> Void)? {
+        guard !isReplay, let mismatch = appModel.runtimeMismatchOnLastConnect, let config = appModel.activeConfig else {
+            return nil
+        }
+        let shown = ConnectionIdentity(host: destination.host, port: destination.port,
+                                       username: destination.username, backend: destination.backend)
+        guard ConnectionIdentity(config).storageKey == shown.storageKey else { return nil }
+        return { Task { await connectWithInstalledRuntime(mismatch.installed) } }
+    }
+
+    /// Saves the runtime the machine has as a second entry, unless one is saved
+    /// already, then connects with it. The entry this form shows stays as it was.
+    func connectWithInstalledRuntime(_ installed: ConnectionBackend) async {
+        guard !isConnecting, credentialLoadError == nil else { return }
+        do {
+            _ = try signIn().siblingToConnect(installed)
+        } catch {
+            // Show the error in place of the card.
+            appModel.herdrMissingOnLastConnect = false
+            appModel.lastError = error.localizedDescription
+            return
+        }
+        // The form now resolves to the entry for this runtime, so connecting saves that one.
+        backend = installed
+        await connect()
     }
 
     private func handleSwitchOutcome(_ outcome: ActiveMachine.SwitchOutcome) {

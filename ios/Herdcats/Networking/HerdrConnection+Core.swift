@@ -39,8 +39,9 @@ extension HerdrConnection {
         return found
     }
 
-    func detectBackends() async throws -> Set<ConnectionBackend> {
-        let owned = generation
+    /// Pass `expected` to run the check only on that attempt's connection.
+    func detectBackends(expected: ConnectionGeneration? = nil) async throws -> Set<ConnectionBackend> {
+        let owned = expected ?? generation
         let client = try slot.ownedClient(owned)
         let command = Self.backendProbeCommand
         let buffer = try await withTimeout(seconds: 10, label: "Herdr runtime check", operation: {
@@ -48,6 +49,29 @@ extension HerdrConnection {
         })
         try requireGeneration(owned)
         return Self.detectedBackends(String(buffer: buffer))
+    }
+
+    /// What Core startup reports when the channel closes before Core replies.
+    /// A machine without `hc` fails this way too: its start command exits at
+    /// once, and the message it prints goes to stderr, which is not read.
+    static let coreStartupClosedMessage = "Could not open Herdr Core on this machine. "
+        + "Check that hc is installed and its Core session is available, then reconnect using Core."
+
+    /// Whether the saved runtime's first check failed the way it does when
+    /// that runtime isn't installed.
+    static func mayMeanRuntimeIsMissing(_ error: Error, backend: ConnectionBackend) -> Bool {
+        switch backend {
+        case .tui: (error as? HerdrError) == .herdrNotFound
+        case .core: (error as? HerdrError) == .invalidConfiguration(coreStartupClosedMessage)
+        }
+    }
+
+    /// The error to report after the runtime check. Keeps `error` when the
+    /// check could not run (`found` is nil) or found the saved runtime.
+    /// Otherwise names the runtime the machine has instead, if any.
+    static func missingRuntimeError(_ error: Error, saved: ConnectionBackend, found: Set<ConnectionBackend>?) -> Error {
+        guard let found, !found.contains(saved) else { return error }
+        return HerdrError.runtimeNotInstalled(saved: saved, available: ConnectionBackend.allCases.first(where: found.contains))
     }
 
     func setRuntimeChangeHandler(_ handler: @escaping @Sendable (ConnectionGeneration) -> Void) {
@@ -109,7 +133,7 @@ extension HerdrConnection {
             if coreSessionID == token { closeCore() }
             await rpc.close()
             if startupFailed, (error as? CoreRPCError) == .closed {
-                throw HerdrError.invalidConfiguration("Could not open Herdr Core on this machine. Check that hc is installed and its Core session is available, then reconnect using Core.")
+                throw HerdrError.invalidConfiguration(Self.coreStartupClosedMessage)
             }
             throw error
         }
