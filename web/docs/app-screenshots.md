@@ -82,3 +82,18 @@ desktop in both themes. Verify the screenshot links and these app destinations:
 
 Support uses an imported stylesheet so its styling survives a direct load of
 the production static export. The Features page uses the project's Moonlit colors and typography.
+
+## Large-device creative refresh (3 November 2026)
+
+The dark App Store header, search creative, and `web/public/og.png` consume
+`ios/maestro/screenshots-output/ipad/13_split_spaces.png` and
+`ios/maestro/screenshots-output/iphone-duo/inner/13_split_spaces.png` through
+`ios/app-store-images/render-creative.mjs`. Their source and output hashes are
+recorded in `assets/app-store/manifest.json`. Both large-device hero sources
+show two active panes: Claude reviewing onboarding and Codex building checkout. The companion `14_split_agents.png` scene opens
+terminal output beside a native conversation from Agents. These use
+simulator-only sample conversations.
+The existing iPhone source and the light iPhone-only creatives are preserved.
+The raw iPad manifest records the source commit, app and fixture hashes, and
+all 14 landscape captures. See the repository README for dedicated simulator
+capture commands and the Device Hub fallback for Duo inner.

@@ -1,6 +1,7 @@
 import Foundation
 import ApplicationServices
 
+let targetWindow = CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : "iPhone Duo"
 let targetAction = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "Open"
 
 func getDeviceHubPID() -> pid_t? {
@@ -54,6 +55,10 @@ func getDesc(_ el: AXUIElement) -> String {
 func findAndPress(_ el: AXUIElement, desc: String) -> Bool {
     if getDesc(el) == desc {
         let err = AXUIElementPerformAction(el, kAXPressAction as CFString)
+        guard err == .success else {
+            fputs("Error: Could not change posture (AX status \(err.rawValue))\n", stderr)
+            exit(1)
+        }
         print("Posture set to '\(desc)' (status \(err.rawValue))")
         return true
     }
@@ -69,12 +74,15 @@ func findAndPress(_ el: AXUIElement, desc: String) -> Bool {
 
 var found = false
 for win in windows {
+    var titleValue: AnyObject?
+    guard AXUIElementCopyAttributeValue(win, kAXTitleAttribute as CFString, &titleValue) == .success,
+          let title = titleValue as? String, title == targetWindow else { continue }
     if findAndPress(win, desc: targetAction) {
         found = true
         break
     }
 }
 if !found {
-    fputs("Error: Button '\(targetAction)' not found in DeviceHub window\n", stderr)
+    fputs("Error: Button '\(targetAction)' not found in DeviceHub window for \(targetWindow). Select the dedicated capture device first\n", stderr)
     exit(1)
 }

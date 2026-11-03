@@ -10,16 +10,22 @@
 # bin/release when you want one. With no herdrcat-v* tag yet, the version
 # already in project.yml is suggested for the first release.
 #
-# Usage: ./ios/bin/next-version
+# Usage: ./ios/bin/next-version [source-ref] (default: HEAD)
 set -euo pipefail
 
 ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 cd "$ROOT"
 
-LAST_TAG="$(git describe --tags --abbrev=0 --match 'herdrcat-v*' 2>/dev/null || true)"
+if [[ $# -gt 1 ]]; then
+  echo "Usage: $0 [source-ref]" >&2
+  exit 1
+fi
+# Resolve once so every lookup uses the same source, without switching branches.
+SOURCE_COMMIT="$(git rev-parse --verify "${1:-HEAD}^{commit}")"
+LAST_TAG="$(git describe --tags --abbrev=0 --match 'herdrcat-v*' "$SOURCE_COMMIT" 2>/dev/null || true)"
 
 if [[ -z "$LAST_TAG" ]]; then
-  CURRENT="$(sed -n -E 's/^[[:space:]]*CFBundleShortVersionString:[[:space:]]*"?([^"]*)"?.*/\1/p' ios/project.yml | head -n 1)"
+  CURRENT="$(sed -n -E 's/^[[:space:]]*CFBundleShortVersionString:[[:space:]]*"?([^"]*)"?.*/\1/p' < <(git show "$SOURCE_COMMIT:ios/project.yml") | head -n 1)"
   echo "No herdrcat-v* tag yet; this is the first release."
   echo ""
   echo "Suggested next version: ${CURRENT:-0.1.0}"
@@ -27,7 +33,7 @@ if [[ -z "$LAST_TAG" ]]; then
 fi
 
 LAST_VERSION="${LAST_TAG#herdrcat-v}"
-RANGE="${LAST_TAG}..HEAD"
+RANGE="${LAST_TAG}..${SOURCE_COMMIT}"
 
 if [[ -z "$(git log "$RANGE" --oneline -- ios/)" ]]; then
   echo "Error: no commits touching ios/ since $LAST_TAG - nothing to release." >&2

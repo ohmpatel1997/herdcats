@@ -121,6 +121,12 @@ struct ConnectedTabsView: View {
                 : nil
         )
         .task {
+            #if DEBUG && targetEnvironment(simulator)
+            if ScreenshotFixtures.enabled && ProcessInfo.processInfo.arguments.contains("-hc.split-capture") {
+                paneLayout.wrappedValue = PaneLayout()
+                paneMemory.forget()
+            }
+            #endif
             model.stopAutoRefresh()
             model.bindConnectionScope(appModel.connectionIdentity)
             guard !Task.isCancelled else { return }

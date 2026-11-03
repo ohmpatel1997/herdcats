@@ -1,0 +1,19 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Show two active panes, rather than a sidebar and a single detail pane.
+- extendedWaitUntil:
+    visible: "Herdcats"
+    timeout: 10000
+- tapOn: "Herdcats"
+- tapOn:
+    id: "pane-split-button"
+- extendedWaitUntil:
+    visible: "Open on the Right"
+    timeout: 10000
+- tapOn: "Checkout redesign"
+- extendedWaitUntil:
+    visible:
+      id: "pane-divider"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 2000

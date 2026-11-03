@@ -279,12 +279,22 @@
                     ["id":"content:unfamiliar", "kind":"record", "text":"future_block", "details":String(decoding: unfamiliarBlock, as: UTF8.self), "truncated":false, "content_ref":unfamiliarRef, "record_refs":[unfamiliarRef]]
                 ]
             }
+            // Split captures bind each pane to its own provider and conversation.
+            let splitCheckout = ProcessInfo.processInfo.arguments.contains("-hc.split-capture") && paneId == "p1"
+            if splitCheckout {
+                entries = [
+                    ["id": "message:user", "kind": "message", "role": "user", "text": "Build the checkout screens with a clear order summary and payment flow.", "truncated": false],
+                    ["id": "message:assistant", "kind": "message", "role": "assistant", "text": "The checkout layout is in place. The **order summary** stays visible while customers choose delivery and payment.", "truncated": false],
+                    ["id": "tool:tests", "kind": "tool", "tool_name": "Run", "status": "completed", "text": "Checkout tests passed · 18 checks", "truncated": false],
+                    ["id": "message:summary", "kind": "message", "role": "assistant", "text": "I’m finishing the validation states and keyboard navigation.", "truncated": false],
+                ]
+            }
             return try AgentBridgeFrame.decode(
                 JSONSerialization.data(withJSONObject: [
                     "event": "timeline.snapshot", "epoch": "fixture", "seq": 1,
                     "data": [
                         "identity": [
-                            "pane_id": paneId, "terminal_id": "fixture-terminal", "agent": ScreenshotFixtures.paneAgent,
+                            "pane_id": paneId, "terminal_id": "fixture-terminal", "agent": splitCheckout ? "codex" : ScreenshotFixtures.paneAgent,
                             "native_session_id": "fixture-session",
                         ], "generation": 1, "entries": entries, "has_more": ScreenshotFixtures.screen.hasPrefix("timeline-history"), "before": "message:user", "agent_status": (showsApproval || showsQuestion) ? "blocked" : "idle",
                         "unknown_records": ProcessInfo.processInfo.arguments.contains("-hc.timeline-long") ? 2 : 0, "dropped_entries": 0,
