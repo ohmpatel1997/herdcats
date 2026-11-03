@@ -68,7 +68,9 @@ jobs:
         run: python3 ios/HerdcatsTests/test_attachment_storage.py
 
       - name: Check release preparation
-        run: python3 ios/HerdcatsTests/test_release_preparation.py
+        run: |
+          python3 ios/HerdcatsTests/test_release_preparation.py
+          python3 ios/HerdcatsTests/test_deploy_command.py
 
       - name: Select an available iPhone simulator
         id: simulator

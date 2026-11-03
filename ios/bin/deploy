@@ -12,6 +12,10 @@
 set -euo pipefail
 
 BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Explicit stages use the public GitHub CLI; no-argument legacy flow remains available.
+if [[ $# -gt 0 ]]; then
+  exec python3 "$BIN_DIR/deploy-release.py" "$@"
+fi
 ROOT="$(git -C "$BIN_DIR" rev-parse --show-toplevel)"
 cd "$ROOT"
 

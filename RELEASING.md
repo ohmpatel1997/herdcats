@@ -1,5 +1,57 @@
 # Preparing a release
 
+## Guided iOS / App Store Connect deployment
+
+Requirements: Git, Python 3.9+, the standard GitHub CLI (`gh auth login`),
+Xcode 26+, XcodeGen, Ruby/Bundler, and maintainer push access. Preparation
+needs no Apple credentials. Start from a clean checkout:
+
+```sh
+./ios/bin/deploy prepare 0.9.0
+# Or omit the version to see a suggestion and enter one interactively.
+```
+
+Before the first app tag, you can keep the version already in `project.yml`;
+the build number still increases. Once app tags exist, choose a higher version.
+
+This fetches `origin/main` and tags, creates `release/0.9.0`, generates
+TestFlight notes through HEAD, and asks you to review them. Set `EDITOR` to an
+editor executable or edit the displayed file in another terminal. Notes are
+committed in `ios/releases/0.9.0.txt` for PR review. The existing release helper
+bumps the version/build and regenerates the project. Confirm that the proposed
+build number exceeds **every** build already uploaded to App Store Connect;
+the script cannot discover uploads made outside this repository. It then pushes
+the branch and opens a PR. A network failure after preparation can be retried
+with the same command on that release branch without another version bump.
+For an interrupted preparation before the bump completes, inspect the branch
+and finish or revert the incomplete preparation before retrying.
+
+Review and merge the PR through normal repository checks. Once the merged
+commit's main CI run completes successfully:
+
+```sh
+export DEVELOPMENT_TEAM=YOURTEAMID
+./ios/bin/deploy publish 123  # replace with the release PR number
+```
+
+Publishing requires a merged `release/<version>` PR targeting `main`, a commit
+still reachable from `origin/main`, and a successful latest **CI** push run at
+that exact SHA. It uses a temporary detached worktree of that commit, copies
+the reviewed notes into fastlane's ignored changelog file, and invokes `bin/beta`
+with its version/changelog and final upload confirmations. Your branch stays
+in place. Apple authentication/signing uses the existing environment or local
+session configuration; never commit credentials.
+
+Retry `publish` with the same PR number after a failure; it does not bump the
+version. If the upload result is uncertain, check App Store Connect first:
+Apple rejects duplicate build numbers, and an already accepted upload does not
+need another upload. After success, check processing and tester availability
+in TestFlight. This does not submit an App Store review, distribute externally,
+create a GitHub release, or release the bridge.
+
+Running `./ios/bin/deploy` without arguments retains the older interactive
+branch-preparation helper. The explicit stages above provide the full flow.
+
 ## First public source preview
 
 The first public source release uses the existing app version **0.3.1**
@@ -46,8 +98,9 @@ build-number monotonicity rather than deriving it solely from the new history.
 For App Store or TestFlight uploads, also check the highest build already uploaded
 and choose a higher number. Do not assume this repository knows every uploaded build.
 
-`ios/bin/deploy` now guides branch preparation and optional branch push; it
-ends at the PR stage instead of tagging or uploading before CI.
+`ios/bin/deploy` without arguments guides branch preparation and optional
+branch push. For the full PR and upload flow, use the explicit `prepare` and
+`publish` stages documented above.
 
 Signed app distribution is a separate task requiring your own Apple credentials
 and signing configuration. `ios/bin/beta` uploads to TestFlight; it is not part
@@ -72,9 +125,9 @@ API private keys and Apple sessions outside Git. Existing
 `APP_STORE_CONNECT_API_KEY_*` environment variables remain supported; without
 an API key, fastlane falls back to Apple session authentication.
 
-`./ios/bin/deploy` only prepares a release PR and does not need Apple credentials.
-After the PR is merged and CI passes, use `./ios/bin/beta` separately for an
-authorized TestFlight upload.
+`./ios/bin/deploy prepare` needs no Apple credentials. After merge and passing
+CI, `./ios/bin/deploy publish <PR-number>` invokes the authorized TestFlight
+upload. `./ios/bin/beta` remains available as a standalone helper.
 
 ## Bridge releases
 
