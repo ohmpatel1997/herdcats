@@ -8,7 +8,7 @@ extension HerdcatsUITests {
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
     }
 
-    func testTerminalBottomGeometryDetectsScrollingAwayFromNewestLine() {
+    func testTerminalLatestButtonReturnsToNewestOutput() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-hc.long-terminal-selection",
                                "-paneShowComposeByDefault", "NO"]
@@ -28,9 +28,19 @@ extension HerdcatsUITests {
         XCTAssertGreaterThan(terminalGeometry(output)["bottomMinY"] as? Double ?? 0, scroll.frame.minY)
         XCTAssertLessThanOrEqual(terminalGeometry(output)["bottomMaxY"] as? Double ?? .infinity,
                                  scroll.frame.maxY + 1)
+        let latest = app.buttons["pane-output-latest"]
+        XCTAssertFalse(latest.exists, "The latest button stays hidden at the bottom")
         scroll.swipeDown(velocity: .fast)
         XCTAssertGreaterThan(terminalGeometry(output)["bottomMaxY"] as? Double ?? 0, scroll.frame.maxY,
                              "The actual last line must be offscreen after scrolling into history")
+        XCTAssertTrue(latest.waitForExistence(timeout: 3))
+        XCTAssertEqual(latest.frame.width, 44, accuracy: 1)
+        XCTAssertEqual(latest.frame.height, 44, accuracy: 1)
+        latest.tap()
+        XCTAssertTrue(latest.waitForNonExistence(timeout: 3))
+        XCTAssertGreaterThan(terminalGeometry(output)["bottomMinY"] as? Double ?? 0, scroll.frame.minY)
+        XCTAssertLessThanOrEqual(terminalGeometry(output)["bottomMaxY"] as? Double ?? .infinity,
+                                 scroll.frame.maxY + 1)
     }
 
     func testQuickTerminalSwipeWithKeyboardOpenDoesNotRestoreOldOffset() {

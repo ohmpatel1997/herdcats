@@ -4,6 +4,8 @@ import UIKit
 // MARK: - Pane output scroll view
 
 struct PaneOutputScrollView: View, Equatable {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let output: String
     let selectableText: AttributedString
     let outputRevision: UInt64
@@ -133,6 +135,7 @@ struct PaneOutputScrollView: View, Equatable {
                 Color.clear
                     .frame(height: bottomOverlayInset + (reservesMarkAsReadSpace ? 68 : 0) + selectionBottomInset)
                     .id("pane-output-bottom")
+                    .anchorPreference(key: PaneOutputBottomAnchorKey.self, value: .bounds) { $0 }
             }
             // Content-level simultaneous drag: unlike gestures attached to
             // the ScrollView itself (never delivered beside the native pan
@@ -221,6 +224,33 @@ struct PaneOutputScrollView: View, Equatable {
                     proxy.scrollTo("pane-output-bottom", anchor: .bottom)
                 }
             }
+            .overlayPreferenceValue(PaneOutputBottomAnchorKey.self) { anchor in
+                GeometryReader { viewport in
+                    let atBottom = anchor.map { viewport[$0].maxY <= viewport.size.height + 8 } ?? true
+                    ZStack(alignment: .bottomTrailing) {
+                        if !atBottom && !output.isEmpty {
+                            Button {
+                                selectionActive = false
+                                onSelectionChange(false)
+                                withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
+                                    proxy.scrollTo("pane-output-bottom", anchor: .bottom)
+                                }
+                            } label: {
+                                latestIcon
+                            }
+                            .buttonStyle(.plain)
+                            .fixedSize()
+                            .accessibilityLabel("Jump to latest output")
+                            .accessibilityIdentifier("pane-output-latest")
+                            .padding(.trailing, 16)
+                            .padding(.bottom, bottomOverlayInset + (reservesMarkAsReadSpace ? 68 : 0) + 8)
+                            .transition(.opacity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: atBottom)
+                }
+            }
         }
         .background(HostingWindowReader(window: hostWindow))
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { note in
@@ -256,6 +286,28 @@ struct PaneOutputScrollView: View, Equatable {
                 }
             }
         }
+    }
+
+    @ViewBuilder private var latestIcon: some View {
+        let icon = Image(systemName: "arrow.down")
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(Theme.text)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+        if reduceTransparency {
+            icon.background(Theme.cardBackground, in: Circle())
+        } else if #available(iOS 26.0, *) {
+            icon.glassEffect(.regular.interactive(), in: Circle())
+        } else {
+            icon.background(.ultraThinMaterial, in: Circle())
+        }
+    }
+}
+
+private struct PaneOutputBottomAnchorKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
     }
 }
 
