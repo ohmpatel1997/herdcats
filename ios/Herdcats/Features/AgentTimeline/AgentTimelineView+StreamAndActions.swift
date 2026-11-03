@@ -266,7 +266,7 @@ extension AgentTimelineView {
                 } else if ScreenshotFixtures.screen == "optional-upgrade-menu" {
                     bridgeVersion = "0.2.0"
                 }
-                if ScreenshotFixtures.screen == "timeline-codex-no-session" {
+                if ScreenshotFixtures.screen == "timeline-codex-no-session" || ProcessInfo.processInfo.arguments.contains("-hc.split-capture") {
                     bridgeCapabilities = AgentBridgeCapabilities(claudeTimeline: true, codexTimeline: true, codexDaemonConfig: true, codexDaemonStop: true, recordContent: true)
                 }
                 if AgentTimelineScreenshotFixture.showsApproval {

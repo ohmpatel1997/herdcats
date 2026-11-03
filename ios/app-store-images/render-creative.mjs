@@ -44,8 +44,8 @@ const phoneSource = ogOnly
   : path.join(input, '03_spaces.png');
 const sourceFiles = {
   phone: phoneSource,
-  ipad: path.join(iosDir, 'maestro/screenshots-output/ipad/03_spaces.png'),
-  duo: path.join(iosDir, 'maestro/screenshots-output/iphone-duo/inner/03_spaces.png'),
+  ipad: path.join(iosDir, 'maestro/screenshots-output/ipad/13_split_spaces.png'),
+  duo: path.join(iosDir, 'maestro/screenshots-output/iphone-duo/inner/13_split_spaces.png'),
 };
 const sizes = {};
 for (const [name, file] of Object.entries(sourceFiles)) {

@@ -28,22 +28,27 @@ FRAMES = {
     '10_compose': 'compose',
     '11_voice': 'voice',
     '12_timeline': 'timeline',
+    '13_split_spaces': 'spaces',
+    '14_split_agents': 'agents',
 }
 
 def run(*args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
-def get_duo_udid():
+def get_duo_device(requested=None):
     listing = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))
     devices = [d for runtime, group in listing['devices'].items() for d in group 
-               if 'iOS' in runtime and d.get('name') == 'iPhone Duo' and d.get('state') == 'Booted']
+               if 'iOS' in runtime and d.get('deviceTypeIdentifier') == 'com.apple.CoreSimulator.SimDeviceType.iPhone-Duo'
+               and d.get('state') == 'Booted' and (requested is None or requested == d['udid'])]
     if not devices:
         raise RuntimeError("No booted iPhone Duo simulator found")
-    return devices[0]['udid']
+    if len(devices) != 1:
+        raise RuntimeError('Multiple booted Duo simulators; select the dedicated capture device with --device')
+    return devices[0]
 
-def set_posture(posture: str):
+def set_posture(posture: str, device_name: str):
     print(f"Setting physical posture to '{posture}'...")
-    subprocess.run(['swift', str(SET_POSTURE), posture], check=True)
+    subprocess.run(['swift', str(SET_POSTURE), posture, device_name], check=True)
     time.sleep(2)
 
 def capture_screen(udid: str, display_id: int, flow_path: Path, output_file: Path):
@@ -54,12 +59,12 @@ def capture_screen(udid: str, display_id: int, flow_path: Path, output_file: Pat
             cwd='/tmp',
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=120
         )
     except FileNotFoundError:
         raise RuntimeError("Maestro CLI executable not found in PATH")
     except subprocess.TimeoutExpired as e:
-        raise RuntimeError(f"Maestro validation timed out after 30s on {flow_path.name}") from e
+        raise RuntimeError(f"Maestro validation timed out after 120s on {flow_path.name}") from e
 
     if proc.returncode != 0:
         details = (proc.stderr or proc.stdout or "").strip()
@@ -74,15 +79,22 @@ def capture_screen(udid: str, display_id: int, flow_path: Path, output_file: Pat
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--device', help='Dedicated booted Duo simulator UDID')
     parser.add_argument('--posture', choices=['closed', 'open', 'both'], default='both')
+    parser.add_argument('--posture-already-set', action='store_true', help='Capture one posture already selected in Device Hub; never switches posture')
     parser.add_argument('--only', nargs='+', choices=FRAMES.keys())
     parser.add_argument('--app', type=Path, help='Use an already-built Debug simulator app bundle')
     parser.add_argument('--build', action='store_true', help='Build and install fresh Debug app before running')
     options = parser.parse_args()
 
-    udid = get_duo_udid()
+    if options.posture_already_set and options.posture == 'both':
+        parser.error('--posture-already-set requires --posture closed or open')
+    device = get_duo_device(options.device)
+    udid = device['udid']
+    run('xcrun', 'simctl', 'bootstatus', udid, '-b')
     print(f"Using booted iPhone Duo: {udid}")
 
+    app_to_install = options.app
     if options.build:
         build_dir = IOS / 'build/screenshots-derived-data'
         print("Building fresh Debug simulator app...")
@@ -101,6 +113,9 @@ def main():
         print(f"Ensuring latest built Debug app from {app_to_install} is installed...")
         run('xcrun', 'simctl', 'install', udid, str(app_to_install))
 
+    if app_to_install is None:
+        parser.error('Provide --app or --build; no built simulator app was found')
+
     # Set dark appearance
     run('xcrun', 'simctl', 'ui', udid, 'appearance', 'dark')
 
@@ -118,6 +133,8 @@ def main():
         try:
             prev = json.loads(manifest_path.read_text())
             existing_frames = prev.get('frames', {})
+            for frame in existing_frames.values():
+                frame.setdefault('appSha256', prev.get('appSha256'))
         except Exception as e:
             print(f"Warning: could not read existing manifest ({e})")
             existing_frames = {}
@@ -128,6 +145,11 @@ def main():
         'device': 'iPhone Duo',
         'udid': udid,
         'appearance': 'dark',
+        'commit': subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip(),
+        'appSha256': hashlib.sha256((app_to_install / 'Herdcats').read_bytes()).hexdigest(),
+        'debugDylibSha256': hashlib.sha256((app_to_install / 'Herdcats.debug.dylib').read_bytes()).hexdigest(),
+        'timelineFixtureSha256': hashlib.sha256((IOS / 'Herdcats/Support/AgentTimelineScreenshotFixture.swift').read_bytes()).hexdigest(),
+        'fixtureSha256': hashlib.sha256((IOS / 'Herdcats/Support/ScreenshotFixtures.swift').read_bytes()).hexdigest(),
         'displays': {
             'outer': {'displayId': 1, 'surface': 'LCD', 'posture': 'Closed'},
             'inner': {'displayId': 3, 'surface': 'LCD-1', 'posture': 'Open'}
@@ -145,9 +167,13 @@ def main():
             print(f"\n==========================================")
             print(f"=== Posture: {posture_name} (Display {display_id}) ===")
             print(f"==========================================")
-            set_posture(posture_name)
+            if not options.posture_already_set:
+                set_posture(posture_name, device['name'])
             
             for frame_name, screen_arg in frames_to_run.items():
+                # Two active panes require the regular-width inner display.
+                if out_dir.name == 'outer' and frame_name.startswith(('13_split_', '14_split_')):
+                    continue
                 print(f"[{posture_name}] Capturing frame {frame_name} ({screen_arg})...")
                 # Terminate previous run
                 subprocess.run(['xcrun', 'simctl', 'terminate', udid, BUNDLE],
@@ -162,6 +188,8 @@ def main():
                 ]
                 if out_dir.name == 'inner' and screen_arg in ('spaces', 'agents'):
                     launch.append('-hc.select-first')
+                if frame_name.startswith(('13_split_', '14_split_')):
+                    launch.append('-hc.split-capture')
                 run('xcrun', 'simctl', 'launch', udid, BUNDLE, *launch)
                 time.sleep(3)
                 
@@ -173,15 +201,23 @@ def main():
                 rel_key = f"{out_dir.name}/{frame_name}.png"
                 manifest_data['frames'][rel_key] = {
                     'sha256': hashlib.sha256(dest_file.read_bytes()).hexdigest(),
-                    'size': dest_file.stat().st_size
+                    'size': dest_file.stat().st_size,
+                    'appSha256': manifest_data['appSha256'],
+                    'debugDylibSha256': manifest_data['debugDylibSha256']
                 }
                 print(f"  ✓ Saved {dest_file.name} ({dest_file.stat().st_size // 1024} KB)")
 
-        # Also copy 03_spaces as the primary hero screenshots
-        if (OUTPUT / 'outer/03_spaces.png').exists():
-            import shutil
-            shutil.copy2(OUTPUT / 'outer/03_spaces.png', OUTPUT / 'iphone-duo-outer-screen.png')
-            shutil.copy2(OUTPUT / 'inner/03_spaces.png', OUTPUT / 'iphone-duo-inner-screen.png')
+        # Use the two-active-pane scene as the inner hero.
+        import shutil
+        for surface in ('outer', 'inner'):
+            source = OUTPUT / surface / ('13_split_spaces.png' if surface == 'inner' else '03_spaces.png')
+            if source.exists():
+                hero = OUTPUT / f'iphone-duo-{surface}-screen.png'
+                shutil.copy2(source, hero)
+                manifest_data['frames'][hero.name] = {
+                    'sha256': hashlib.sha256(hero.read_bytes()).hexdigest(),
+                    'size': hero.stat().st_size
+                }
 
         # Write manifest
         manifest_data['frames'] = dict(sorted(manifest_data['frames'].items()))

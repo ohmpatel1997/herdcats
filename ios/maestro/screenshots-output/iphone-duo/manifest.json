@@ -1,8 +1,8 @@
 {
   "suite": "iPhone Duo Maestro Standard Suite",
-  "createdAt": "2026-11-02T01:13:59.263491+00:00",
+  "createdAt": "2026-11-03T08:11:21.129722+00:00",
   "device": "iPhone Duo",
-  "udid": "4730FABB-DF45-406D-A2D2-1A8DD4109A63",
+  "udid": "B08D8ADF-147E-4C8E-98C6-F0EE60E27747",
   "appearance": "dark",
   "displays": {
     "outer": {
@@ -18,100 +18,208 @@
   },
   "frames": {
     "inner/01_onboarding.png": {
-      "sha256": "b35ae731f53a81af564cd8989fa1faceb1cd60fe812218019c54ce91e999d0a0",
-      "size": 292947
+      "sha256": "6404d83aef6c03c201234086625a887ba169de4d911bfd50ae8ef4c0be68f52e",
+      "size": 291562,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "inner/02_connect_form.png": {
-      "sha256": "6568e9c55e59614551ea374de697925460341883b1ca09392261a8bee203d792",
-      "size": 266021
+      "sha256": "7c4e622a7a50e6089806961c25fb0b0583da23ed10a1b1181c4a4739f0828e6c",
+      "size": 264633,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "inner/03_spaces.png": {
-      "sha256": "eb34b879ead01c73356b288a3d34114f4b93f19204616561d2d12e46e9712d24",
-      "size": 438774
+      "sha256": "aba66456ec725b67c15bd244ccc8c5e503ac31c2546aba4f726f37fc308c22f5",
+      "size": 481687,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "inner/04_workspace_pane.png": {
-      "sha256": "285a573972195e58f544824dcec4b7e2791b4013699bc4aff75530060187d4e5",
-      "size": 438249
+      "sha256": "c7d72156ca92fbece14c3c8586931f9fd871fc89e71cb47be87d79e0d87bd408",
+      "size": 418891,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "inner/05_pane_keys.png": {
-      "sha256": "988f4e8059d130fb15e9705360ac95d27adc61b2ee17cea1f8da1eb916e4b60a",
-      "size": 461368
+      "sha256": "52c156899173bae34d4ebb274821a870a81b6ba45bf869d266d5a587a7e87f34",
+      "size": 628987,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "inner/06_agents.png": {
-      "sha256": "59dd206491fd6282daab733edc45826c3239f704f9480142e52c9db0309bf3ba",
-      "size": 459076
+      "sha256": "fb10578cf02779faf3d4d2896713722b52f34d2b6964eb73dcb336d67304f8a7",
+      "size": 489322,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "inner/07_agent_pane.png": {
-      "sha256": "285a573972195e58f544824dcec4b7e2791b4013699bc4aff75530060187d4e5",
-      "size": 438249
+      "sha256": "c7d72156ca92fbece14c3c8586931f9fd871fc89e71cb47be87d79e0d87bd408",
+      "size": 418891,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "inner/08_quota.png": {
-      "sha256": "7f1048c197163b7867222fdaf58ae3996feea9676bc3543ecbea95d0b86e2f60",
-      "size": 331947
+      "sha256": "5243b813fd02e2618ae7ee5a6c815094e42ac443631f481bd9d7620d3b642c24",
+      "size": 330524,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "inner/09_settings.png": {
-      "sha256": "9180b4702953e283a75159975b1bc9a5ae9732f8545804a883e0a0c3bebdd7ff",
-      "size": 338776
+      "sha256": "c5ae7a3d5f6f38fcbd8e24a326c68a0e4857587996d1ea3d08ac0db00052a141",
+      "size": 337541,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "inner/10_compose.png": {
-      "sha256": "3bd6616a0b10c06c85c81528d8a09fe9dd4855033c053d8b6d9900457b729139",
-      "size": 382730
+      "sha256": "51f03d3a46715d96c3f8ca651e5d0aa1686bcd08733749655b5ea5b16be0f90f",
+      "size": 369601,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "inner/11_voice.png": {
-      "sha256": "6649426c7b5f7e3ea5304ada2b095a2f9082d1cb9a89df6f474b939825025403",
-      "size": 376080
+      "sha256": "24cee2d79399b116b3c8d9765be349400f19bc2d4c62336d728c7b35100f4ce3",
+      "size": 353997,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "inner/12_timeline.png": {
-      "sha256": "d5d5c6d1283a79b2cbea6461890a15928f0138aac4348871f0b6be45c061c3e0",
-      "size": 373318
+      "sha256": "a2184e8dd39f54c5c7c1ba46bad7a28b6e9a8631e01f16a7ba6c2e4ce42161cf",
+      "size": 360303,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
+    },
+    "inner/13_split_spaces.png": {
+      "sha256": "92c502e1dc2dc40abaf45170b66f4dc3d45e7a8b1ea9ecf4d75cec60ab291eb7",
+      "size": 431371,
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529",
+      "captureMethod": "Device Hub accessibility verified L/R headers, pane-divider and distinct conversations; simctl display 3"
+    },
+    "inner/14_split_agents.png": {
+      "sha256": "27ce5230a4bda767e66687ea744387dfe09bc9095e8243c0443ab369890355ab",
+      "size": 566217,
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529",
+      "captureMethod": "Device Hub accessibility verified L/R headers, pane-divider and distinct conversations; simctl display 3"
+    },
+    "iphone-duo-inner-screen.png": {
+      "sha256": "92c502e1dc2dc40abaf45170b66f4dc3d45e7a8b1ea9ecf4d75cec60ab291eb7",
+      "size": 431371,
+      "source": "inner/13_split_spaces.png"
+    },
+    "iphone-duo-outer-screen.png": {
+      "sha256": "bf3fdc5cfd47b689ca7ec84fada0bcc658ddc4ff9d918b0d8ca0542f8f21cf19",
+      "size": 239340,
+      "source": "outer/03_spaces.png"
     },
     "outer/01_onboarding.png": {
-      "sha256": "15fbd6d53fe9ed8256890070c848f375377d4f052ffb01237c94056e736fea37",
-      "size": 265763
+      "sha256": "06181c8543c4b4f95048bbff36c3179c047b8933aa292a604d1bae2100db2364",
+      "size": 264130,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "outer/02_connect_form.png": {
-      "sha256": "18fe1b6032ae1ce0c4f7e6272175592ddd75e35f09f7dde73744e8ef5b34b0cb",
-      "size": 245969
+      "sha256": "aa3479c1fcd1adbe7f80172c54ab5ea072d511d2c948d08294d9dfc436383afa",
+      "size": 244460,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "outer/03_spaces.png": {
-      "sha256": "c3cc22d3f8b402fca6ff6ced42e29edc74c3d779f39af43c21f26eb74855fd05",
-      "size": 251725
+      "sha256": "bf3fdc5cfd47b689ca7ec84fada0bcc658ddc4ff9d918b0d8ca0542f8f21cf19",
+      "size": 239340,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "outer/04_workspace_pane.png": {
-      "sha256": "88e03e779c29572904041dac010625255857652ba9eedee220d903674e1ecfc7",
-      "size": 575635
+      "sha256": "9becfc0d74a1e4184229acf0bc2d161d6d59cfd1a4f97501bd4747db6bd40cf5",
+      "size": 393756,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "outer/05_pane_keys.png": {
-      "sha256": "82de5b1f07cd573ef8f01d183cbcfc6429dd8b8ed15f004e186d14a6b162df48",
-      "size": 395921
+      "sha256": "deb695a43d42e6ebf594e9e9fd774df1710706ef3d41df30d9e397f8aa5d962d",
+      "size": 405866,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "outer/06_agents.png": {
-      "sha256": "f05fff7ce6313297a8b1c5c9b7c194c9367209944e184331e232efdb4f4af64a",
-      "size": 263124
+      "sha256": "19cff5e9361d85b981b32dc000917b9d91889bc07cdf2550d49a1e25330380db",
+      "size": 260138,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "outer/07_agent_pane.png": {
-      "sha256": "88e03e779c29572904041dac010625255857652ba9eedee220d903674e1ecfc7",
-      "size": 575635
+      "sha256": "9becfc0d74a1e4184229acf0bc2d161d6d59cfd1a4f97501bd4747db6bd40cf5",
+      "size": 393756,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "outer/08_quota.png": {
-      "sha256": "a44b9d42736689fb9134367d6bbc143a50b0d762c696fca0a5f23fcdc8b5199c",
-      "size": 303347
+      "sha256": "b71b235990ce9386fa1479757743a22f3c39a7e2c74845a480bc90de82af6b5b",
+      "size": 301911,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "outer/09_settings.png": {
-      "sha256": "6f93a3a14bd23c68d382040885f3dd64ecd85bfc86f107685057f41ce44e13d2",
-      "size": 322104
+      "sha256": "cc3df7891ec0c4f2eaebc37cb0abba26b33f1d004b13128fa5efb26e22636467",
+      "size": 320712,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "outer/10_compose.png": {
-      "sha256": "f10894f03eaa0370cee6a3fb3c364b28ee37acd68546f6c7f607784e9f2a6f17",
-      "size": 350983
+      "sha256": "eb433f196c645f9d79677f17c79362eee93aa5c5053c1ada9200932abef727fe",
+      "size": 330970,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "outer/11_voice.png": {
-      "sha256": "d21b7d2b814ff6028522e68460ff70574a1208f9312eed044021d3827ef03e7c",
-      "size": 342353
+      "sha256": "95dbf60ca1fbb9f897bd9c5464281d55cbe79971169eed7f46558a9149491e8f",
+      "size": 310701,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     },
     "outer/12_timeline.png": {
-      "sha256": "69af270eed530e47bf5af3c65220b84ae75390c18ae93ab4bb42fe83d339d2b7",
-      "size": 344882
+      "sha256": "840f19e47eb37d2d0bb624a6285817fad0decf35b7d14d28a1ff8cf81206a4e7",
+      "size": 316760,
+      "captureMethod": "simctl framebuffer; visual validation",
+      "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+      "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529"
     }
+  },
+  "appSha256": "bed51e8a35befb1bd9572ef387415be67deb01973e2876f638c2d527de576569",
+  "debugDylibSha256": "424c9e5e7fffd13203a9d6acea674a8b72c63682edec24ac8c21e2257e1c5529",
+  "fixtureSha256": "2ce360cdce7df0a855cb70acb591a1f5ac972a59b8162e25909e5def4dfcb6a7",
+  "timelineFixtureSha256": "9b4ba27156658054262089b17d49a254e6861992fea69199744a4e7d7cfebb14",
+  "commit": "eb178347c73ddc52d8ccd3b231a1ac860288dea4",
+  "validation": "Actual frames visually inspected; Duo inner split verified through Device Hub accessibility. Maestro inner returned a black display and was not counted as validation.",
+  "splitCaptureSourceHashes": {
+    "ios/Herdcats/Support/ScreenshotFixtures.swift": "2ce360cdce7df0a855cb70acb591a1f5ac972a59b8162e25909e5def4dfcb6a7",
+    "ios/Herdcats/Support/AgentTimelineScreenshotFixture.swift": "9b4ba27156658054262089b17d49a254e6861992fea69199744a4e7d7cfebb14",
+    "ios/Herdcats/Features/MainTabView.swift": "efc12a3d424cf52661104d5bc28b8704e62351c54fbf528afb0813035a87a732",
+    "ios/Herdcats/Features/AgentTimeline/AgentTimelineView+StreamAndActions.swift": "2f99434acefd5160ac49078ef11274bf035f26c07164e4679d83def0fde3106b"
   }
 }

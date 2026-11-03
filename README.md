@@ -251,8 +251,9 @@ timeline surface independently of earlier captures.
 
 Two more Maestro suites check large-screen layouts in dark mode.
 `ios/bin/maestro-ipad` creates or boots an iPad Pro 13-inch (M5) simulator,
-rotates it to landscape and captures all 12 screens. `ios/bin/maestro-duo`
-runs all 12 screens on the outer and inner displays of an already booted
+rotates it to landscape and captures 14 screens, including two active-pane splits.
+`ios/bin/maestro-duo` runs 12 screens on the outer display and 14 on the inner
+display of an already booted
 **iPhone Duo** simulator.
 
 Their flow folders are siblings under `ios/maestro/screenshots/`: `ipad/`
@@ -262,9 +263,37 @@ Maestro configuration selects only the top-level iPhone flows; run the
 device-specific suites with their runners:
 
 ```sh
-ios/bin/maestro-ipad
-ios/bin/maestro-duo
+# Build once into isolated derived data, then use dedicated capture simulators.
+(cd ios && xcodegen generate)
+xcodebuild -project ios/Herdcats.xcodeproj -scheme Herdcats \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /tmp/herdrcat-screenshots CODE_SIGNING_ALLOWED=NO build
+
+ios/bin/maestro-ipad --device <ipad-udid> \
+  --app /tmp/herdrcat-screenshots/Build/Products/Debug-iphonesimulator/Herdcats.app
+# In Device Hub, select the dedicated Duo. Give it a unique simulator name.
+ios/bin/maestro-duo --device <duo-udid> \
+  --app /tmp/herdrcat-screenshots/Build/Products/Debug-iphonesimulator/Herdcats.app
 ```
+
+Use explicit UDIDs to avoid active simulator work. The iPad runner verifies
+landscape before capturing; the Duo posture helper requires a Device Hub window
+whose title matches the selected simulator name. Both runners record the source
+commit, built executable hash, fixture hash, capture time, and PNG hashes.
+Inspect the actual captures before using them, and shut down only the dedicated
+simulators afterward. The Duo manifest also tracks its two hero copies; its
+inner hero shows the split scene.
+
+The two extra large-screen scenes, `13_split_spaces` and `14_split_agents`,
+show two native conversations from Spaces and terminal output beside a
+native conversation from Agents, and require the resize divider.
+They are captured on iPad and Duo inner only. Run Maestro captures sequentially.
+On iOS 27.1 Duo inner, XCTest can return a black display: use Device Hub
+to open Split, choose the checkout pane, verify both L/R headers and the
+resize divider, and capture `xcrun simctl io <udid> screenshot --display=3 <file>`.
+For the Agents variant, hide the sidebar and switch the left pane to Terminal.
+Record this as Device Hub/visual validation in the manifest; a black Maestro
+display is not a successful validation.
 
 Raw images and capture manifests live together under
 `ios/maestro/screenshots-output/`: `ipad/` and `iphone-duo/` sit alongside

@@ -1,0 +1,25 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Show two active panes, rather than a sidebar and a single detail pane.
+- extendedWaitUntil:
+    visible: "Review the onboarding flow"
+    timeout: 10000
+- tapOn: "Review the onboarding flow"
+- tapOn:
+    id: "pane-split-button"
+- extendedWaitUntil:
+    visible: "Open on the Right"
+    timeout: 10000
+- tapOn: "Build the checkout screens"
+- extendedWaitUntil:
+    visible:
+      id: "pane-divider"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 2000
+# A complementary scene: terminal output beside a native conversation.
+- tapOn:
+    text: "Terminal"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 2000
