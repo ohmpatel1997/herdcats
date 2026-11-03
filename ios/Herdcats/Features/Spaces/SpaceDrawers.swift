@@ -14,6 +14,8 @@ enum SpaceAction: Identifiable {
 struct SpaceActionsDrawer: View {
     let space: Space
     let isWorktreeActionDisabled: Bool
+    /// "Open on Left/Right" for the space, on regular width only.
+    var openActions: [PaneOpenAction] = []
     let onSelect: (SpaceAction) -> Void
     let onCancel: () -> Void
 
@@ -24,6 +26,29 @@ struct SpaceActionsDrawer: View {
                 .lineLimit(1)
 
             VStack(spacing: 8) {
+                ForEach(openActions) { action in
+                    Button {
+                        action.perform()
+                        onCancel()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: action.systemImage)
+                                .font(.jost(14, weight: .semibold))
+                                .foregroundStyle(Theme.accent)
+                                .frame(width: 20)
+                            Text(action.title)
+                                .font(.jost(15, weight: .semibold))
+                                .foregroundStyle(Theme.text)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .herdrField()
+                    }
+                    .buttonStyle(.herdrCard)
+                    .accessibilityIdentifier("space-\(action.identifier)-button-\(space.id)")
+                }
                 row(.openWorktree, title: "Open Worktree", icon: "arrow.triangle.branch",
                     identifier: "space-open-worktree-button-\(space.id)")
                     .disabled(isWorktreeActionDisabled)

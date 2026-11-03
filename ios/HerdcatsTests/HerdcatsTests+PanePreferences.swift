@@ -207,6 +207,17 @@ struct QuotaLastUpdatedTests {
 
 @Suite("Pane switcher collapse")
 struct PaneSwitcherCollapseTests {
+    @Test func narrowPanesDefaultToTheCompactStrip() {
+        #expect(PaneSwitcherCollapse.prefersCompact(paneWidth: 300))
+        #expect(PaneSwitcherCollapse.prefersCompact(paneWidth: 419))
+        #expect(!PaneSwitcherCollapse.prefersCompact(paneWidth: 420))
+        #expect(!PaneSwitcherCollapse.prefersCompact(paneWidth: 800))
+    }
+
+    @Test func anUnmeasuredPaneDoesNotForceTheCompactStrip() {
+        #expect(!PaneSwitcherCollapse.prefersCompact(paneWidth: 0))
+    }
+
     @Test func dragDownPastThresholdExpandsChips() {
         #expect(PaneSwitcherCollapse.isCompact(afterDragFrom: true, translation: 30) == false)
     }

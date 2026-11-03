@@ -21,6 +21,14 @@ enum PaneSwitcherCollapse {
     /// Drag distance past which releasing the strip toggles its state.
     static let snapDistance: CGFloat = 24
 
+    /// Panes narrower than this start with the chip strip, so the strip
+    /// doesn't eat a split pane's terminal. 0 means not measured yet.
+    static let narrowPaneWidth: CGFloat = 420
+
+    static func prefersCompact(paneWidth: CGFloat) -> Bool {
+        paneWidth > 0 && paneWidth < narrowPaneWidth
+    }
+
     /// Whether the switcher is compact after a vertical drag on it ends.
     /// Dragging down expands; dragging up collapses.
     static func isCompact(afterDragFrom startCompact: Bool, translation: CGFloat) -> Bool {
@@ -92,6 +100,13 @@ struct PaneSwitcherGlassItem<S: InsettableShape>: ViewModifier {
 
 /// The same pane identity and status shown in space detail, presented as
 /// separate translucent cards. Drag up to collapse to a row of glass chips.
+/// A dashed tile at the end of the strip for the pane open in the other half
+/// of a split, shown when the split is folded to one pane.
+struct PanePartnerTile {
+    let title: String
+    let focus: () -> Void
+}
+
 struct PaneSwitcher: View {
     let panes: [PaneEntry]
     let tabs: [TabEntry]
@@ -101,9 +116,11 @@ struct PaneSwitcher: View {
     var pendingPane: PendingPanePlaceholder?
     var isAddDisabled = false
     var allowsMutations = true
+    var partnerTile: PanePartnerTile?
     var onAdd: () -> Void
     var onRename: (PaneEntry) -> Void = { _ in }
     var onKill: (PaneEntry) -> Void = { _ in }
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ScaledMetric(relativeTo: .subheadline) private var cardHeight = 100
     @ScaledMetric(relativeTo: .caption) private var chipHeight = 30
     /// Vertical translation while the strip follows a drag; nil otherwise.
@@ -120,6 +137,7 @@ struct PaneSwitcher: View {
         pendingPane: PendingPanePlaceholder? = nil,
         isAddDisabled: Bool = false,
         allowsMutations: Bool = true,
+        partnerTile: PanePartnerTile? = nil,
         onAdd: @escaping () -> Void,
         onRename: @escaping (PaneEntry) -> Void = { _ in },
         onKill: @escaping (PaneEntry) -> Void = { _ in }
@@ -132,6 +150,7 @@ struct PaneSwitcher: View {
         self.pendingPane = pendingPane
         self.isAddDisabled = isAddDisabled
         self.allowsMutations = allowsMutations
+        self.partnerTile = partnerTile
         self.onAdd = onAdd
         self.onRename = onRename
         self.onKill = onKill
@@ -281,6 +300,7 @@ struct PaneSwitcher: View {
                             }
                             .buttonStyle(.herdrCard)
                             .contextMenu { paneMenu(for: pane) }
+                            .paneDraggable(dragRef(for: pane), title: pane.displayTitle, enabled: horizontalSizeClass == .regular)
                             .accessibilityLabel(paneAccessibilityLabel(for: pane))
                             .accessibilityAddTraits(selection == pane.id ? .isSelected : [])
                             .id(pane.id)
@@ -313,6 +333,10 @@ struct PaneSwitcher: View {
                             .accessibilityLabel("Add Pane or Tab")
                             .accessibilityIdentifier("pane-add-button")
                             .id("pane-add")
+                        }
+
+                        if let partnerTile {
+                            partnerCard(partnerTile)
                         }
                     }
                     .padding(.horizontal, 12)
@@ -372,6 +396,10 @@ struct PaneSwitcher: View {
                             .accessibilityIdentifier("pane-add-button")
                             .id("pane-add")
                         }
+
+                        if let partnerTile {
+                            partnerChip(partnerTile)
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -390,6 +418,48 @@ struct PaneSwitcher: View {
                 }
             }
         }
+    }
+
+    private func partnerCard(_ tile: PanePartnerTile) -> some View {
+        let shape = RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
+        return Button(action: tile.focus) {
+            VStack(spacing: 6) {
+                Image(systemName: "square.on.square")
+                    .font(.jost(.title3, weight: .semibold))
+                Text(tile.title)
+                    .font(.jost(.caption, weight: .medium))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+            .foregroundStyle(Theme.accent)
+            .padding(12)
+            .frame(width: 140, height: cardHeight)
+            .contentShape(shape)
+            .overlay(shape.strokeBorder(Theme.accent.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+        }
+        .buttonStyle(.herdrCard)
+        .accessibilityLabel("Other pane: \(tile.title)")
+        .accessibilityHint("Shows the pane open on the other side")
+        .accessibilityIdentifier("pane-partner-tile")
+    }
+
+    private func partnerChip(_ tile: PanePartnerTile) -> some View {
+        Button(action: tile.focus) {
+            HStack(spacing: 6) {
+                Image(systemName: "square.on.square")
+                Text(tile.title).lineLimit(1)
+            }
+            .font(.jost(.caption, weight: .medium))
+            .foregroundStyle(Theme.accent)
+            .padding(.horizontal, 12)
+            .frame(height: chipHeight)
+            .contentShape(Capsule())
+            .overlay(Capsule().strokeBorder(Theme.accent.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+        }
+        .buttonStyle(.herdrCard)
+        .accessibilityLabel("Other pane: \(tile.title)")
+        .accessibilityHint("Shows the pane open on the other side")
+        .accessibilityIdentifier("pane-partner-tile")
     }
 
     private func chip(for pane: PaneEntry) -> some View {
@@ -416,9 +486,15 @@ struct PaneSwitcher: View {
         }
         .buttonStyle(.herdrCard)
         .contextMenu { paneMenu(for: pane) }
+        .paneDraggable(dragRef(for: pane), title: pane.displayTitle, enabled: horizontalSizeClass == .regular)
         .accessibilityLabel(paneAccessibilityLabel(for: pane))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .id(pane.id)
+    }
+
+    /// What a dragged card or chip opens in the split view's detail column.
+    private func dragRef(for pane: PaneEntry) -> PaneRef {
+        PaneRef(spaceID: pane.workspaceId, paneID: pane.paneId)
     }
 
     /// Non-interactive stand-in for a pane that Herdr is still creating.

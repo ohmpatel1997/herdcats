@@ -21,6 +21,10 @@ struct PaneDetailView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.openPaneMemory) private var openPaneMemory
     @Environment(\.closeDetail) private var closeDetail
+    @Environment(\.sidebarToggle) private var sidebarToggle
+    @Environment(\.paneSlotActions) private var slotActions
+    @Environment(\.panePartner) private var panePartner
+    @Environment(\.paneIsFocused) private var paneIsFocused
     @State private var siblings: [PaneEntry]
     @State private var tabs: [TabEntry] = []
     @State private var selectedPaneID: String
@@ -29,6 +33,8 @@ struct PaneDetailView: View {
     @State private var lastUpdatedByPaneID: [String: Date] = [:]
     /// Pane switcher shows chips instead of cards to give the output more room.
     @State private var isSwitcherCompact = false
+    /// The pane's own width: a narrow split slot starts with the chip strip.
+    @State private var paneWidth: CGFloat = 0
     /// Side the newly selected pane sits on in the switcher; drives the
     /// incoming session's slide. Set before the animated selection change.
     @State private var switchEdge: Edge = .trailing
@@ -153,8 +159,8 @@ struct PaneDetailView: View {
         )
     }
 
-    /// What the switcher strip offers, for when it is turned off: pick a
-    /// sibling pane, and add, rename or kill one.
+    /// What the switcher strip offers, when a screen turns it off: pick a sibling pane, and add,
+    /// rename or kill one.
     @ViewBuilder
     private var paneMenuSection: some View {
         if siblings.count > 1 {
@@ -192,7 +198,122 @@ struct PaneDetailView: View {
         }
     }
 
-    var body: some View {
+    private var isSplit: Bool { slotActions?.isSplit == true }
+
+    private var supportsTimelineToggle: Bool {
+        !appModel.isCoreMode && TimelineAgentAvailability.supports(agent: selectedPane.agent)
+    }
+
+    private var timelineToggleButton: some View {
+            Button {
+                timelineMode.wrappedValue.toggle()
+            } label: {
+                Image(systemName: timelineMode.wrappedValue ? "terminal" : "bubble.left")
+                    .font(.jost(16, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
+            .accessibilityLabel(timelineMode.wrappedValue ? "Terminal" : "Timeline")
+            .accessibilityIdentifier(timelineMode.wrappedValue ? "timeline-open-terminal" : "terminal-open-timeline")
+    }
+
+    private var paneOptionsMenu: some View {
+        Menu {
+            if let slotActions, slotActions.isSplit {
+                Button { slotActions.replace() } label: {
+                    Label("Replace…", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .accessibilityIdentifier("pane-slot-replace")
+                Button { slotActions.swap() } label: {
+                    Label("Swap Sides", systemImage: "arrow.left.arrow.right")
+                }
+                .accessibilityIdentifier("pane-slot-swap")
+                Button { slotActions.fullWidth() } label: {
+                    Label("Open in Full Width", systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+                .accessibilityIdentifier("pane-slot-full-width")
+                Button { slotActions.close() } label: {
+                    Label("Close This Side", systemImage: "xmark.rectangle")
+                }
+                .accessibilityIdentifier("pane-slot-close")
+                Divider()
+            }
+            if timelineMode.wrappedValue, let version = bridgeUpgrade.bridgeVersion, HostHelperProbe.isOlderThanPinned(version) {
+                Button {
+                    bridgeUpgrade.requestUpgrade()
+                } label: {
+                    Label("Upgrade Herdcats Bridge", systemImage: "arrow.up.circle")
+                }
+                .accessibilityIdentifier("timeline-upgrade-menu-button")
+                Divider()
+            }
+            // Without the switcher strip, its pane switching and actions
+            // move into this menu.
+            if !showsPaneSwitcher {
+                paneMenuSection
+                Divider()
+            }
+            if !appModel.isCoreMode {
+            Toggle("Show Compose by Default", isOn: $showComposeByDefault)
+                .accessibilityIdentifier("pane-show-compose-toggle")
+            Divider()
+
+            Button {
+                if let workspace {
+                    pendingWorkspaceAction = .rename(workspace)
+                }
+            } label: {
+                Label("Rename Workspace", systemImage: "square.and.pencil")
+            }
+            .disabled(workspace == nil)
+            .accessibilityIdentifier("workspace-rename-button")
+
+            Button(role: .destructive) {
+                if let workspace {
+                    pendingWorkspaceAction = .close(workspace)
+                }
+            } label: {
+                Label("Close Workspace", systemImage: "xmark.circle")
+            }
+            .disabled(workspace == nil)
+            .accessibilityIdentifier("workspace-close-button")
+
+            Button(role: .destructive) {
+                if let workspace {
+                    pendingWorkspaceAction = .deleteWorktree(workspace)
+                }
+            } label: {
+                Label("Delete Worktree Checkout", systemImage: "trash")
+            }
+            .disabled(workspace?.worktree == nil)
+            .accessibilityIdentifier("workspace-delete-worktree-button")
+            }
+
+            #if DEBUG
+            Divider()
+
+            Button {
+                showLiveDiagnostics.toggle()
+                PaneLiveInputMetrics.shared.setEnabled(showLiveDiagnostics)
+            } label: {
+                Label(
+                    showLiveDiagnostics ? "Hide Diagnostics" : "Show Diagnostics",
+                    systemImage: "exclamationmark.triangle"
+                )
+            }
+            .accessibilityLabel(showLiveDiagnostics ? "Hide diagnostics" : "Show diagnostics")
+            .accessibilityIdentifier("pane-diagnostics-button")
+            #endif
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.jost(16, weight: .medium))
+                .foregroundStyle(.primary)
+        }
+        .disabled(isPerformingAction)
+        .accessibilityLabel("Pane Options")
+        .accessibilityIdentifier("pane-options-menu")
+    }
+
+    private var paneContent: some View {
         ZStack { selectedPaneSession }
         .overlay(alignment: .top) {
             if showsPaneSwitcher {
@@ -205,6 +326,12 @@ struct PaneDetailView: View {
                     pendingPane: creatingPane,
                     isAddDisabled: isPerformingAction,
                     allowsMutations: !appModel.isCoreMode,
+                    partnerTile: panePartner.map { partner in
+                        PanePartnerTile(
+                            title: partner.ref.displayTitle(in: spacesModel?.spaces ?? []),
+                            focus: partner.focus
+                        )
+                    },
                     onAdd: {
                         isShowingAddPane = true
                     },
@@ -217,6 +344,32 @@ struct PaneDetailView: View {
                 )
             }
         }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let slotActions, slotActions.isSplit {
+                PaneHeaderBar(
+                    title: selectedPane.displayTitle,
+                    status: selectedPane.status,
+                    subtitle: selectedPane.shortCwd.isEmpty ? nil : selectedPane.shortCwd,
+                    agent: selectedPane.agent,
+                    slot: slotActions.slot,
+                    isFocused: paneIsFocused,
+                    toggleSidebar: slotActions.slot == .left && sidebarToggle?.isListShowing == false ? sidebarToggle : nil
+                ) {
+                    if supportsTimelineToggle { timelineToggleButton }
+                    paneOptionsMenu
+                }
+            }
+            // The session sits below the header, so nothing hides under it.
+            paneContent
+                .frame(maxHeight: .infinity)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { paneWidth = $0 }
+        .onChange(of: PaneSwitcherCollapse.prefersCompact(paneWidth: paneWidth), initial: true) { _, narrow in
+            if narrow { isSwitcherCompact = true }
+        }
         .background(Theme.backgroundGradient.ignoresSafeArea())
         .navigationTitle(selectedPane.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
@@ -225,122 +378,56 @@ struct PaneDetailView: View {
         .navigationBarBackButtonHidden(!usesSystemBackButton)
         .toolbarRole(.editor)
         .toolbar {
-            // The split view's detail column has no stack to pop.
-            if showsPaneBackButton, !usesSystemBackButton {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        leave()
-                    } label: {
-                        Label("Back", systemImage: "chevron.backward")
-                    }
-                    .tint(Color.primary)
-                    .accessibilityIdentifier("pane-back-button")
-                }
-            }
-            ToolbarItem(placement: .principal) {
-                StatusNavigationTitle(
-                    title: selectedPane.displayTitle,
-                    status: selectedPane.status,
-                    subtitle: selectedPane.shortCwd.isEmpty ? nil : selectedPane.shortCwd,
-                    agent: selectedPane.agent
-                )
-            }
-            if !appModel.isCoreMode, TimelineAgentAvailability.supports(agent: selectedPane.agent) {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        timelineMode.wrappedValue.toggle()
-                    } label: {
-                        Image(systemName: timelineMode.wrappedValue ? "terminal" : "bubble.left")
-                            .font(.jost(16, weight: .medium))
-                            .foregroundStyle(.primary)
-                    }
-                    .accessibilityLabel(timelineMode.wrappedValue ? "Terminal" : "Timeline")
-                    .accessibilityIdentifier(timelineMode.wrappedValue ? "timeline-open-terminal" : "terminal-open-timeline")
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    if timelineMode.wrappedValue, let version = bridgeUpgrade.bridgeVersion, HostHelperProbe.isOlderThanPinned(version) {
+            if !isSplit {
+                // The split view's detail column has no stack to pop.
+                if showsPaneBackButton, !usesSystemBackButton {
+                    ToolbarItem(placement: .topBarLeading) {
                         Button {
-                            bridgeUpgrade.requestUpgrade()
+                            leave()
                         } label: {
-                            Label("Upgrade Herdcats Bridge", systemImage: "arrow.up.circle")
+                            Label("Back", systemImage: "chevron.backward")
                         }
-                        .accessibilityIdentifier("timeline-upgrade-menu-button")
-                        Divider()
+                        .tint(Color.primary)
+                        .accessibilityIdentifier("pane-back-button")
                     }
-                    // Without the switcher strip, its pane switching and
-                    // actions move into this menu.
-                    if !showsPaneSwitcher {
-                        paneMenuSection
-                        Divider()
-                    }
-                    if !appModel.isCoreMode {
-                    Toggle("Show Compose by Default", isOn: $showComposeByDefault)
-                        .accessibilityIdentifier("pane-show-compose-toggle")
-                    Divider()
-
-                    Button {
-                        if let workspace {
-                            pendingWorkspaceAction = .rename(workspace)
-                        }
-                    } label: {
-                        Label("Rename Workspace", systemImage: "square.and.pencil")
-                    }
-                    .disabled(workspace == nil)
-                    .accessibilityIdentifier("workspace-rename-button")
-
-                    Button(role: .destructive) {
-                        if let workspace {
-                            pendingWorkspaceAction = .close(workspace)
-                        }
-                    } label: {
-                        Label("Close Workspace", systemImage: "xmark.circle")
-                    }
-                    .disabled(workspace == nil)
-                    .accessibilityIdentifier("workspace-close-button")
-
-                    Button(role: .destructive) {
-                        if let workspace {
-                            pendingWorkspaceAction = .deleteWorktree(workspace)
-                        }
-                    } label: {
-                        Label("Delete Worktree Checkout", systemImage: "trash")
-                    }
-                    .disabled(workspace?.worktree == nil)
-                    .accessibilityIdentifier("workspace-delete-worktree-button")
-                    }
-
-                    #if DEBUG
-                    Divider()
-
-                    Button {
-                        showLiveDiagnostics.toggle()
-                        PaneLiveInputMetrics.shared.setEnabled(showLiveDiagnostics)
-                    } label: {
-                        Label(
-                            showLiveDiagnostics ? "Hide Diagnostics" : "Show Diagnostics",
-                            systemImage: "exclamationmark.triangle"
-                        )
-                    }
-                    .accessibilityLabel(showLiveDiagnostics ? "Hide diagnostics" : "Show diagnostics")
-                    .accessibilityIdentifier("pane-diagnostics-button")
-                    #endif
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.jost(16, weight: .medium))
-                        .foregroundStyle(.primary)
                 }
-                .disabled(isPerformingAction)
-                .accessibilityLabel("Pane Options")
-                .accessibilityIdentifier("pane-options-menu")
+                ToolbarItem(placement: .principal) {
+                    StatusNavigationTitle(
+                        title: selectedPane.displayTitle,
+                        status: selectedPane.status,
+                        subtitle: selectedPane.shortCwd.isEmpty ? nil : selectedPane.shortCwd,
+                        agent: selectedPane.agent
+                    )
+                }
+                if let slotActions, !slotActions.isSplit {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            slotActions.split()
+                        } label: {
+                            Image(systemName: "rectangle.split.2x1")
+                                .font(.jost(16, weight: .medium))
+                                .foregroundStyle(.primary)
+                        }
+                        .accessibilityLabel("Split")
+                        .accessibilityIdentifier("pane-split-button")
+                    }
+                }
+                if supportsTimelineToggle {
+                    ToolbarItem(placement: .topBarTrailing) { timelineToggleButton }
+                }
+                ToolbarItem(placement: .topBarTrailing) { paneOptionsMenu }
             }
         }
+        // Split panes draw their own header, since the detail column has one system bar.
+        .toolbar(isSplit ? .hidden : .automatic, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
         .onChange(of: selectedPaneID) { _, selected in
             bridgeUpgrade.bridgeVersion = nil
             openPaneMemory?.remember(selected)
         }
+        // Record the pane a whole-space ref resolved to, so the lists can tell
+        // when another row would open the same pane.
+        .onAppear { openPaneMemory?.remember(selectedPaneID) }
         // Pushed panes hide the tab bar; in the detail column it stays so tabs can still switch.
         .toolbar(showsPaneBackButton ? .hidden : .automatic, for: .tabBar)
         .onDisappear {

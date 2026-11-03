@@ -125,12 +125,66 @@ enum PaneLiveRefreshPolicy {
     static func shouldRead(
         now: TimeInterval,
         lastReadAt: TimeInterval?,
-        lastAcknowledgedAt: TimeInterval?
+        lastAcknowledgedAt: TimeInterval?,
+        isFocused: Bool
     ) -> Bool {
+        // Only the focused pane owns Live input; an output-only pane in a
+        // split keeps the normal lifecycle poll and nothing faster.
+        guard isFocused else { return false }
         guard let lastAcknowledgedAt else { return false }
         guard now - lastAcknowledgedAt <= activityWindow else { return false }
         guard let lastReadAt else { return true }
         return now - lastReadAt >= minReadInterval
+    }
+}
+
+/// What a split slot gaining or losing focus means for its pane. Pure, so the
+/// teardown rules stay covered without a view.
+enum PaneFocusPolicy {
+    struct Effects: Equatable {
+        /// Resign the keyboard, end the Live session, and stop dictation.
+        let releasesInput: Bool
+        /// The pane may now run its implicit Done → Idle mark.
+        let marksSeen: Bool
+    }
+
+    static func effects(wasFocused: Bool, isFocused: Bool) -> Effects {
+        Effects(releasesInput: wasFocused && !isFocused, marksSeen: !wasFocused && isFocused)
+    }
+
+    /// How long after a slot put its keyboard away the other slot may still
+    /// take it over.
+    static let keyboardHandoffWindow: TimeInterval = 1.5
+
+    /// A slot that lost focus with its keyboard up leaves a handoff stamp. The
+    /// slot that gains focus raises its own keyboard when the stamp is fresh,
+    /// so the old one slides down and the new one slides up.
+    static func takesOverKeyboard(handoffAt: TimeInterval?, now: TimeInterval) -> Bool {
+        guard let handoffAt else { return false }
+        return now - handoffAt <= keyboardHandoffWindow
+    }
+
+    enum DictationTeardown: Equatable {
+        /// Recording: cancel and restore the draft from before the recording.
+        case cancelRecording
+        /// Draining after recording: complete as failed so nothing is sent.
+        case interrupt
+        case none
+    }
+
+    static func dictationTeardown(isRecording: Bool, isBusy: Bool) -> DictationTeardown {
+        if isRecording { return .cancelRecording }
+        return isBusy ? .interrupt : .none
+    }
+
+    /// The automatic Done → Idle mark runs for the focused pane only, once per visit.
+    static func shouldImplicitlyMarkSeen(
+        isImplicitPreference: Bool,
+        isDone: Bool,
+        isFocused: Bool,
+        alreadyMarked: Bool
+    ) -> Bool {
+        isImplicitPreference && isDone && isFocused && !alreadyMarked
     }
 }
 

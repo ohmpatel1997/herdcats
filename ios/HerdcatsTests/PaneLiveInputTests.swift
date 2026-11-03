@@ -66,9 +66,9 @@ struct PaneLiveInputTests {
     }
 
     @Test func rapidReadsCoalesceAndStopAfterTyping() {
-        #expect(PaneLiveRefreshPolicy.shouldRead(now: 1, lastReadAt: nil, lastAcknowledgedAt: 1))
-        #expect(!PaneLiveRefreshPolicy.shouldRead(now: 1.1, lastReadAt: 1, lastAcknowledgedAt: 1))
-        #expect(PaneLiveRefreshPolicy.shouldRead(now: 1.2, lastReadAt: 1, lastAcknowledgedAt: 1))
-        #expect(!PaneLiveRefreshPolicy.shouldRead(now: 2, lastReadAt: 1, lastAcknowledgedAt: 1))
+        #expect(PaneLiveRefreshPolicy.shouldRead(now: 1, lastReadAt: nil, lastAcknowledgedAt: 1, isFocused: true))
+        #expect(!PaneLiveRefreshPolicy.shouldRead(now: 1.1, lastReadAt: 1, lastAcknowledgedAt: 1, isFocused: true))
+        #expect(PaneLiveRefreshPolicy.shouldRead(now: 1.2, lastReadAt: 1, lastAcknowledgedAt: 1, isFocused: true))
+        #expect(!PaneLiveRefreshPolicy.shouldRead(now: 2, lastReadAt: 1, lastAcknowledgedAt: 1, isFocused: true))
     }
 }

@@ -79,16 +79,17 @@ private struct QuotaNotSetupPreviewView: View {
     @State private var model = SpacesModel()
     @State private var appModel = AppModel()
     @State private var selectedTab = ConnectedTabsView.MainTab.quota
+    @State private var layout = PaneLayout()
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            SpacesScreen(model: model)
+            SpacesScreen(model: model, layout: $layout)
                 .tabItem {
                     Label("Spaces", systemImage: "square.grid.3x3")
                 }
                 .tag(ConnectedTabsView.MainTab.spaces)
 
-            AgentsScreen(model: model)
+            AgentsScreen(model: model, layout: $layout)
                 .tabItem {
                     Label("Agents", systemImage: "person.2")
                 }

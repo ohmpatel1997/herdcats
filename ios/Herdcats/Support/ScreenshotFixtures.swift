@@ -210,6 +210,7 @@ struct ScreenshotRootView: View {
 private struct LoadingAuditFixtureView: View {
     @Environment(AppModel.self) private var appModel
     @State private var quota: SpacesModel
+    @State private var layout = PaneLayout()
     @State private var retryCount = 0
     private var screen: String { ScreenshotFixtures.screen }
 
@@ -247,8 +248,8 @@ private struct LoadingAuditFixtureView: View {
             } else {
                 TabView {
                     Group {
-                        if screen.hasSuffix("agents") { AgentsScreen(model: quota) }
-                        else if screen.hasSuffix("spaces") { SpacesScreen(model: quota) }
+                        if screen.hasSuffix("agents") { AgentsScreen(model: quota, layout: $layout) }
+                        else if screen.hasSuffix("spaces") { SpacesScreen(model: quota, layout: $layout) }
                         else if screen.hasSuffix("quota") { QuotaScreen(model: quota) }
                         else if screen.hasSuffix("terminal") {
                             NavigationStack {

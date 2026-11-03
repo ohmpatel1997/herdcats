@@ -11,12 +11,14 @@ struct LiveSessionTaskKey: Equatable {
     let isOffline: Bool
     let isSceneActive: Bool
     let liveInputEnabled: Bool
+    let isFocused: Bool
 }
 
 struct LiveRefreshTaskKey: Equatable {
     let paneId: String
     let isActive: Bool
     let hasActiveAck: Bool
+    let isFocused: Bool
 }
 
 extension PaneSessionView {
@@ -46,7 +48,8 @@ extension PaneSessionView {
             paneId: pane.paneId,
             isOffline: appModel.isOffline,
             isSceneActive: appModel.isSceneActive,
-            liveInputEnabled: liveInputEnabled
+            liveInputEnabled: liveInputEnabled,
+            isFocused: paneIsFocused
         )
     }
 
@@ -56,7 +59,8 @@ extension PaneSessionView {
         LiveRefreshTaskKey(
             paneId: pane.paneId,
             isActive: appModel.isSceneActive,
-            hasActiveAck: lastLiveAckAt != nil
+            hasActiveAck: lastLiveAckAt != nil,
+            isFocused: paneIsFocused
         )
     }
 
@@ -277,12 +281,59 @@ extension PaneSessionView {
         }
     }
 
+    /// This slot gained focus while the other had its keyboard up: once that
+    /// keyboard has slid down, bring this slot's up, so it reads as a handoff.
+    func takeOverKeyboard() async {
+        try? await Task.sleep(for: .milliseconds(300))
+        guard !Task.isCancelled, paneIsFocused,
+              PaneFocusPolicy.takesOverKeyboard(
+                  handoffAt: keyboardHandoff?.stampedAt,
+                  now: ProcessInfo.processInfo.systemUptime
+              ) else { return }
+        if surfaceModel.isLiveKeyboardSurface, !liveInputEnabled {
+            // Live input is still starting. Keep the stamp: `onChange(of: liveInputEnabled)`
+            // calls this again once it is ready, while the handoff window lasts.
+            return
+        }
+        keyboardHandoff?.stampedAt = nil
+        if surfaceModel.isComposeSurface {
+            composeFieldFocused = true
+        } else if surfaceModel.isLiveKeyboardSurface {
+            liveInputFocused = true
+        }
+    }
+
+    /// A slot lost focus: put the keyboard away, end the Live session, and
+    /// stop dictation the way leaving the pane does. The draft and composer
+    /// state stay, and return when the pane is focused again.
+    func releaseInputFocus() {
+        // The other slot raises its keyboard once this one is down.
+        keyboardHandoff?.stampedAt = (composeFieldFocused || liveInputFocused)
+            ? ProcessInfo.processInfo.systemUptime : nil
+        dismissLiveKeyboard()
+        composeFieldFocused = false
+        switch PaneFocusPolicy.dictationTeardown(
+            isRecording: surfaceModel.surface == .voiceRecording,
+            isBusy: dictation.isBusy
+        ) {
+        case .cancelRecording: cancelVoice()
+        case .interrupt: interruptDictation()
+        case .none: break
+        }
+        // Cancelling a recording refocuses Compose; this pane no longer types.
+        composeFieldFocused = false
+        flushDraftSave()
+        abandonLiveInput()
+        // Gaining focus decides again whether Done should be marked seen.
+        autoMarkedPaneID = nil
+    }
+
     /// Foreground-only rapid pane reads after acknowledged Live input.
     /// Coalesces reads per `PaneLiveRefreshPolicy`, then idles once typing
     /// stops; the five-second lifecycle-aware poll remains the fallback.
     func runLiveForegroundRefresh() async {
         while !Task.isCancelled {
-            guard appModel.isSceneActive, let ackAt = lastLiveAckAt else { return }
+            guard paneIsFocused, appModel.isSceneActive, let ackAt = lastLiveAckAt else { return }
             if ProcessInfo.processInfo.systemUptime - ackAt > PaneLiveRefreshPolicy.activityWindow {
                 lastLiveAckAt = nil
                 return
@@ -295,7 +346,8 @@ extension PaneSessionView {
             guard PaneLiveRefreshPolicy.shouldRead(
                 now: now,
                 lastReadAt: lastLiveReadAt,
-                lastAcknowledgedAt: lastLiveAckAt
+                lastAcknowledgedAt: lastLiveAckAt,
+                isFocused: paneIsFocused
             ) else { continue }
             lastLiveReadAt = now
             let before = session.output
@@ -396,9 +448,12 @@ extension PaneSessionView {
     }
 
     func considerImplicitMarkSeen() async {
-        guard doneClearPreference == .implicit else { return }
-        guard pane.status == .done else { return }
-        guard autoMarkedPaneID != pane.paneId else { return }
+        guard PaneFocusPolicy.shouldImplicitlyMarkSeen(
+            isImplicitPreference: doneClearPreference == .implicit,
+            isDone: pane.status == .done,
+            isFocused: paneIsFocused,
+            alreadyMarked: autoMarkedPaneID == pane.paneId
+        ) else { return }
         autoMarkedPaneID = pane.paneId
         await markSeen(triggeredByUser: false)
     }

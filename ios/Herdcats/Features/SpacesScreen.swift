@@ -9,13 +9,21 @@ struct SpacesScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let model: SpacesModel
+    /// The open panes, shared with the Agents tab and by the split view and
+    /// the compact stack, so folding or unfolding keeps the same panes open.
+    @Binding var layout: PaneLayout
+    /// Each open item's sibling pane, owned above both tabs so a rebuilt detail restores it.
+    var paneMemory = OpenPaneMemory()
 
-    /// Id of the open space. Shared by the split view and the compact stack,
-    /// so folding or unfolding keeps the same space open.
-    @State private var selectedID: String?
-    /// The selected space as last seen in the list, so a refresh that drops
-    /// it doesn't blank the pane mid-read.
-    @State private var lastSeen: Space?
+    /// Open spaces as last seen in the list, so a refresh that drops one
+    /// doesn't blank its pane mid-read.
+    @State private var lastSeen: [String: Space] = [:]
+
+    /// Panes and tabs listed under each expanded space, on regular width.
+    @State private var paneTrees = SpacePaneTreeStore()
+    /// Spaces the user folded or unfolded by hand, per window. Spaces open
+    /// in a slot unfold by themselves unless folded here.
+    @SceneStorage("spacePaneTreeOverrides") private var treeOverridesRaw = ""
 
     @AppStorage(SpaceSortPreference.storageKey)
     private var sortRaw = SpaceSortPreference.default.rawValue
@@ -80,7 +88,9 @@ struct SpacesScreen: View {
         @Bindable var model = model
 
         return SelectionSplitView(
-            selection: $selectedID,
+            layout: $layout,
+            memory: paneMemory,
+            pickerKind: .spaces,
             emptyTitle: "Select a space"
         ) {
             Group {
@@ -113,8 +123,9 @@ struct SpacesScreen: View {
                                 }
                                 .accessibilityIdentifier("space-row-\(group.root.workspace.number)")
                                 .id(group.id)
+                                paneTreeRows(for: group.root, indent: QuietListMetrics.titleInset)
                                 ForEach(group.worktrees) { space in
-                                    spaceLink(space) {
+                                    spaceLink(space, isWorktree: true) {
                                         WorktreeRow(
                                             space: space,
                                             isHighlighted: model.highlightedWorktreeID == space.id,
@@ -122,6 +133,7 @@ struct SpacesScreen: View {
                                             lastUpdated: model.lastActivity(in: space)
                                         )
                                     }
+                                    paneTreeRows(for: space, indent: QuietListMetrics.titleInset * 2)
                                 }
                                 if let pending = model.pendingWorktreeAction,
                                    pending.sourceSpaceID == group.root.id {
@@ -131,6 +143,9 @@ struct SpacesScreen: View {
                             }
                         }
                         .listStyle(.plain)
+                        .task(id: PaneTreeTrigger(targets: treeTargets, retryTick: paneTrees.retryTick)) {
+                            await paneTrees.sync(treeTargets, connection: appModel.connection)
+                        }
                         .scrollContentBackground(.hidden)
                         .environment(\.defaultMinListRowHeight, 0)
                         .contentMargins(.top, 4, for: .scrollContent)
@@ -207,7 +222,7 @@ struct SpacesScreen: View {
                 rememberSelected()
                 autoSelectFirstIfNeeded()
             }
-            .onChange(of: selectedID) { _, _ in rememberSelected() }
+            .onChange(of: layout) { _, _ in rememberSelected() }
             .onAppear { autoSelectFirstIfNeeded() }
             .sheet(item: $actionsTarget, onDismiss: {
                 guard let pending = pendingSpaceAction else { return }
@@ -218,6 +233,9 @@ struct SpacesScreen: View {
                 SpaceActionsDrawer(
                     space: space,
                     isWorktreeActionDisabled: model.isPerformingWorktreeAction,
+                    openActions: horizontalSizeClass == .regular
+                        ? PaneOpenAction.actions(for: PaneRef(spaceID: space.id, paneID: nil), layout: $layout, memory: paneMemory)
+                        : [],
                     onSelect: { action in
                         pendingSpaceAction = (action, space)
                         actionsTarget = nil
@@ -382,9 +400,9 @@ struct SpacesScreen: View {
                 _ = await (spaces, usage)
             }
             .connectionStatusBanner(appModel: appModel)
-        } detail: { id in
-            if let space = model.spaces.first(where: { $0.id == id }) ?? lastSeen.flatMap({ $0.id == id ? $0 : nil }) {
-                WorkspacePaneView(space: space)
+        } detail: { ref in
+            if let space = model.spaces.first(where: { $0.id == ref.spaceID }) ?? lastSeen[ref.spaceID] {
+                WorkspacePaneView(space: space, initialPaneID: ref.paneID)
                     .environment(appModel)
                     .environment(model)
             } else {
@@ -395,20 +413,82 @@ struct SpacesScreen: View {
     }
 
     private func rememberSelected() {
-        guard let selectedID, let live = model.spaces.first(where: { $0.id == selectedID }) else { return }
-        lastSeen = live
+        for ref in [layout.left, layout.right].compactMap({ $0 }) {
+            if let live = model.spaces.first(where: { $0.id == ref.spaceID }) {
+                lastSeen[ref.spaceID] = live
+            }
+        }
     }
 
     private func autoSelectFirstIfNeeded() {
-        if selectedID == nil, horizontalSizeClass == .regular,
-           ProcessInfo.processInfo.arguments.contains("-hc.select-first") {
-            selectedID = displayedGroups.first?.root.id
+        if layout.left == nil, horizontalSizeClass == .regular,
+           ProcessInfo.processInfo.arguments.contains("-hc.select-first"),
+           let first = displayedGroups.first?.root {
+            layout.openInFocused(PaneRef(spaceID: first.id, paneID: nil))
         }
     }
 
     /// Only the split view's detail column marks a row; a pushed pane covers the list.
+    // MARK: Pane tree
+
+    private struct PaneTreeTrigger: Hashable {
+        let targets: [SpacePaneTreeTarget]
+        let retryTick: Int
+    }
+
+    private var treeOverrides: [String: Bool] {
+        get { SpacePaneTree.decode(treeOverridesRaw) }
+        nonmutating set { treeOverridesRaw = SpacePaneTree.encode(newValue) }
+    }
+
+    private func isOpen(_ space: Space) -> Bool {
+        layout.left?.spaceID == space.id || layout.right?.spaceID == space.id
+    }
+
+    private func isTreeExpanded(_ space: Space) -> Bool {
+        horizontalSizeClass == .regular
+            && SpacePaneTree.isExpanded(space.id, overrides: treeOverrides, isOpen: isOpen(space))
+    }
+
+    /// The expanded spaces, as the trees to fetch.
+    private var treeTargets: [SpacePaneTreeTarget] {
+        displayedGroups.flatMap(\.members).filter(isTreeExpanded).map { space in
+            SpacePaneTreeTarget(
+                spaceID: space.id,
+                workspaceID: space.workspace.workspaceId,
+                key: .init(tabCount: space.workspace.tabCount, paneCount: space.workspace.paneCount)
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func paneTreeRows(for space: Space, indent: CGFloat) -> some View {
+        if isTreeExpanded(space) {
+            SpacePaneTreeRows(
+                space: space,
+                load: paneTrees.loads[space.id],
+                indent: indent,
+                layout: $layout,
+                retry: { paneTrees.retry(space.id) }
+            )
+        }
+    }
+
+    private func treePill(for space: Space, trailingInset: CGFloat) -> some View {
+        SpacePaneTreePill(
+            paneCount: space.workspace.paneCount,
+            isExpanded: isTreeExpanded(space)
+        ) {
+            var overrides = treeOverrides
+            SpacePaneTree.toggle(space.id, overrides: &overrides, isOpen: isOpen(space))
+            withAnimation(reduceMotion ? nil : .snappy) { treeOverrides = overrides }
+        }
+        .padding(.trailing, trailingInset)
+    }
+
     private func isSelected(_ space: Space) -> Bool {
-        horizontalSizeClass == .regular && selectedID == space.id
+        horizontalSizeClass == .regular
+            && (layout.left?.spaceID == space.id || layout.right?.spaceID == space.id)
     }
 
     // MARK: Pieces
@@ -416,21 +496,44 @@ struct SpacesScreen: View {
     /// Opens a space on tap, its More drawer on long press, and offers
     /// trailing swipe actions: More and Close.
     @ViewBuilder
-    private func spaceLink<Row: View>(_ space: Space, @ViewBuilder row: () -> Row) -> some View {
+    private func spaceLink<Row: View>(
+        _ space: Space,
+        isWorktree: Bool = false,
+        @ViewBuilder row: () -> Row
+    ) -> some View {
         // Keep native cell selection and swipe handling. The long press must
         // be simultaneous so it doesn't consume the NavigationLink's tap.
         let link = Group {
             if horizontalSizeClass == .regular {
-                Button { selectedID = space.id } label: { row() }
-                    .buttonStyle(.plain)
+                Button { layout.openInFocused(PaneRef(spaceID: space.id, paneID: nil), shown: OpenPaneMemory.resolver(paneMemory)) } label: {
+                    row().paneSlotBadge(layout.badgeSlots(spaceID: space.id), focused: layout.focused)
+                }
+                .buttonStyle(.plain)
+                .paneDraggable(PaneRef(spaceID: space.id, paneID: nil), title: space.label, enabled: true)
             } else {
-                NavigationLink(value: space.id) { row() }
+                NavigationLink(value: PaneRef(spaceID: space.id, paneID: nil)) { row() }
                     .hidesNavigationIndicator()
+            }
+        }
+        .overlay(alignment: isWorktree ? .trailing : .bottomTrailing) {
+            // Beside the row's own button, so a tap here only folds the tree.
+            if horizontalSizeClass == .regular, space.workspace.paneCount > 0 {
+                // A worktree row's time sits at its trailing edge; the pill goes left of it.
+                treePill(for: space, trailingInset: isWorktree ? 64 : 0)
             }
         }
         .quietListRow()
         if appModel.isCoreMode {
-            link
+            // No actions drawer in Core mode, so the row menu is the way to pick a side.
+            if horizontalSizeClass == .regular {
+                link.contextMenu {
+                    ForEach(PaneOpenAction.actions(for: PaneRef(spaceID: space.id, paneID: nil), layout: $layout, memory: paneMemory)) { action in
+                        Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
+                    }
+                }
+            } else {
+                link
+            }
         } else {
             // WhatsApp-style: drag right to left; Close sits at the screen edge.
             link.swipeActions(edge: .trailing, allowsFullSwipe: false) {
