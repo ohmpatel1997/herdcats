@@ -817,8 +817,8 @@ final class AgentTimelineUITests: XCTestCase {
         let scroll = app.scrollViews["agent-timeline-scroll"]
         XCTAssertTrue(scroll.waitForExistence(timeout: 5))
         // Collapse the pane strip separately, before measuring the reading position.
-        let add = app.buttons["pane-add-button"]
-        let card = add.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let addPane = app.buttons["pane-add-button"]
+        let card = addPane.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         card.press(forDuration: 0.05, thenDragTo: card.withOffset(CGVector(dx: 0, dy: -60)))
         // The loaded history starts mid-turn, so the agent's name sits above it.
         let speaker = app.descendants(matching: .any)["timeline-speaker-message:midturn"].firstMatch

@@ -118,7 +118,7 @@ struct AgentTimelineView: View {
     /// The widest the conversation column gets.
     static let readingWidth: CGFloat = 720
     /// Space between the conversation and the views before and after it.
-    static let trailingGap: CGFloat = 16
+    static let sectionGap: CGFloat = 16
 
     /// The pane's agent names each turn. Agy's pane says "agy" while its
     /// timeline identity says "antigravity_cli"; both name and icon handle either.
@@ -203,7 +203,7 @@ struct AgentTimelineView: View {
             GeometryReader { viewport in
                 ScrollView {
                     // Spacing is 0: the conversation's own gap rows space it,
-                    // and the views around it pad themselves by `trailingGap`.
+                    // and the views around it pad themselves by `sectionGap`.
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if timeline.hasSnapshot(for: connectionState, paneId: paneId, agent: agent) {
                             let items = conversationItems
@@ -216,7 +216,7 @@ struct AgentTimelineView: View {
                                     .accessibilityAction(named: "Load earlier messages") {
                                         Task { await refreshHistory() }
                                     }
-                                    .padding(.bottom, Self.trailingGap)
+                                    .padding(.bottom, Self.sectionGap)
                             }
                             if items.isEmpty {
                                 ContentUnavailableView("No messages yet", systemImage: "bubble.left")
@@ -234,18 +234,18 @@ struct AgentTimelineView: View {
                             if timeline.delayed {
                                 TimelineNotice("Source update delayed; showing verified history.",
                                     systemImage: "clock.badge.exclamationmark", kind: .warning)
-                                    .padding(.top, Self.trailingGap)
+                                    .padding(.top, Self.sectionGap)
                             }
                             if let dialog = timeline.pendingPiDialog {
                                 PiDialogCard(dialog: dialog, isSending: timeline.isPiActionPending,
                                     onSubmit: { answer in Task { await timeline.respondPiDialog(dialog, value: answer) } },
                                     onUseTerminal: onUseTerminal)
                                     .id("\(contentScope):pi-dialog:\(dialog.requestId)")
-                                    .padding(.top, Self.trailingGap)
+                                    .padding(.top, Self.sectionGap)
                             }
                             if let message = timeline.piActionError {
                                 TimelineNotice(message, systemImage: "exclamationmark.circle", kind: .error)
-                                    .padding(.top, Self.trailingGap)
+                                    .padding(.top, Self.sectionGap)
                             }
                             if showsApproval, let pending = timeline.pendingApproval {
                                 ApprovalCard(pending: pending, response: approvalResponse) { option in
@@ -253,7 +253,7 @@ struct AgentTimelineView: View {
                                 }
                                 .id("\(contentScope):approval:\(pending.requestId)")
                                 .disabled(approvalResponse.isDisabled)
-                                .padding(.top, Self.trailingGap)
+                                .padding(.top, Self.sectionGap)
                             }
                             if showsQuestion, let pending = timeline.pendingQuestion {
                                 let questionScope = contentScope
@@ -272,7 +272,7 @@ struct AgentTimelineView: View {
                                         }
                                     })
                                     .id("\(contentScope):question:\(pending.requestId)")
-                                    .padding(.top, Self.trailingGap)
+                                    .padding(.top, Self.sectionGap)
                             }
                         } else {
                             availability
@@ -281,7 +281,7 @@ struct AgentTimelineView: View {
                         // floating Compose bubble without an opaque dock panel.
                         Color.clear
                             .frame(height: bottomOverlayInset + approvalInset)
-                            .padding(.top, Self.trailingGap)
+                            .padding(.top, Self.sectionGap)
                             .padding(.bottom, DesignSystem.Spacing.base)
                             .id("timeline-bottom")
                     }
@@ -773,5 +773,9 @@ struct TimelineNotice: View {
         .font(.jost(.caption))
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)
+        // One static text element, read and found by its words alone.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
+        .accessibilityAddTraits(.isStaticText)
     }
 }

@@ -179,19 +179,20 @@ struct AgentTimelineEntryView: View {
 
     // MARK: Your messages
 
-    /// A bubble on the trailing side that hugs its text.
+    /// A bubble on the trailing side that hugs its text. It is offered the
+    /// column width minus the leading gap, up to `bubbleMaxWidth`; padding
+    /// and frames give that exactly, where a Spacer in an HStack would share
+    /// the width and could wrap a long message early.
     private var userLayout: some View {
-        HStack(spacing: 0) {
-            Spacer(minLength: Self.bubbleLeadingGap(isAccessibilitySize: dynamicTypeSize.isAccessibilitySize))
-            VStack(alignment: .trailing, spacing: 4) {
-                bubble
-                if entry.truncated {
-                    Text("Preview shortened.")
-                        .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
-                }
+        VStack(alignment: .trailing, spacing: 4) {
+            bubble
+            if entry.truncated {
+                Text("Preview shortened.")
+                    .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
             }
-            .frame(maxWidth: Self.bubbleMaxWidth, alignment: .trailing)
         }
+        .frame(maxWidth: Self.bubbleMaxWidth, alignment: .trailing)
+        .padding(.leading, Self.bubbleLeadingGap(isAccessibilitySize: dynamicTypeSize.isAccessibilitySize))
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
