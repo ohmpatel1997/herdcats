@@ -37,82 +37,87 @@ enum TimelineMessageBlock: Equatable {
         let length: Int
         let indent: Int
         let language: String?
-        var lines: [Substring] = []
     }
 
-    private enum Open {
-        case none
-        case paragraph([Substring])
-        case bullets(indent: Int, items: [String])
-        case numbered(indent: Int, start: Int, items: [String])
-        case quote([Substring])
-        case fence(Fence)
-    }
+    private enum Kind: Equatable { case none, paragraph, quote, bullets, numbered, fence }
 
+    /// The open block keeps its lines and items in the parser's own arrays,
+    /// appended in place, so each line costs the same however long the
+    /// block already is. Parsing stays linear in the message length.
     private struct Parser {
         var blocks: [TimelineMessageBlock] = []
-        var open: Open = .none
+        var kind: Kind = .none
+        /// Lines of the open paragraph, quote or fence.
+        var lines: [Substring] = []
+        /// Items of the open list.
+        var items: [String] = []
+        var listIndent = 0
+        var listStart = 1
+        var fence: Fence?
+        /// Where the last list item's text starts. A fence indented that far
+        /// belongs under the item, even after a blank line.
+        var itemContentIndent: Int?
 
         mutating func consume(_ line: Substring) {
-            if case .fence(var fence) = open {
+            if kind == .fence, let fence {
                 if Self.closes(fence, line) {
-                    blocks.append(Self.code(fence))
-                    open = .none
+                    emitFence()
                 } else {
-                    fence.lines.append(Self.dropIndent(line, upTo: fence.indent))
-                    open = .fence(fence)
+                    lines.append(Self.dropIndent(line, upTo: fence.indent))
                 }
+                return
+            }
+            if Self.isBlank(line) {
+                if kind == .paragraph { lines.append(line) } else { flush() }
                 return
             }
             let indent = Self.indent(of: line)
-            let blank = line.allSatisfy { $0 == " " || $0 == "\t" }
-            if blank {
-                if case .paragraph(let lines) = open {
-                    open = .paragraph(lines + [line])
-                } else {
-                    flush()
-                }
+            if indent <= 3 + (itemContentIndent ?? 0),
+               let opening = Self.openingFence(line.drop(while: Self.isIndent), indent: indent) {
+                flush()
+                fence = opening
+                kind = .fence
                 return
             }
             if indent <= 3 {
+                // No tabs here: a tab alone counts as four columns.
                 let body = line.dropFirst(indent)
-                if let fence = Self.openingFence(body, indent: indent) {
-                    flush(); open = .fence(fence); return
-                }
                 if let heading = Self.heading(body) {
-                    flush(); blocks.append(heading); return
+                    startBlock()
+                    blocks.append(heading)
+                    return
                 }
                 if Self.isRule(body) {
-                    flush(); blocks.append(.rule); return
+                    startBlock()
+                    blocks.append(.rule)
+                    return
                 }
                 if let quoted = Self.quoteContent(body) {
-                    if case .quote(let lines) = open {
-                        open = .quote(lines + [quoted])
-                    } else {
-                        flush(); open = .quote([quoted])
-                    }
+                    if kind != .quote { startBlock(); kind = .quote }
+                    lines.append(quoted)
                     return
                 }
-                if let item = Self.bulletContent(body), !isNested(indent) {
-                    if case .bullets(let listIndent, let items) = open {
-                        open = .bullets(indent: listIndent, items: items + [String(item)])
-                    } else {
-                        flush(); open = .bullets(indent: indent, items: [String(item)])
-                    }
+                if let (item, contentIndent) = Self.bulletContent(body, indent: indent), !isNested(indent) {
+                    if kind != .bullets { flush(); kind = .bullets; listIndent = indent }
+                    items.append(String(item))
+                    itemContentIndent = contentIndent
                     return
                 }
-                if let (number, item) = Self.numberedContent(body), !isNested(indent) {
-                    if case .numbered(let listIndent, let start, let items) = open {
-                        open = .numbered(indent: listIndent, start: start, items: items + [String(item)])
-                        return
+                if let (number, item, contentIndent) = Self.numberedContent(body, indent: indent), !isNested(indent) {
+                    if kind != .numbered {
+                        // Inside a paragraph only a 1 starts a list, so "2024. That
+                        // year…" stays a sentence. After a blank line any number does.
+                        if kind == .paragraph, number != 1, !(lines.last.map(Self.isBlank) ?? false) {
+                            appendText(line)
+                            return
+                        }
+                        flush()
+                        kind = .numbered
+                        listIndent = indent
+                        listStart = number
                     }
-                    // A numbered line only interrupts a paragraph when it
-                    // starts at 1, so "2024. That year…" stays a sentence.
-                    if case .paragraph = open, number != 1 {
-                        appendText(line)
-                        return
-                    }
-                    flush(); open = .numbered(indent: indent, start: number, items: [String(item)])
+                    items.append(String(item))
+                    itemContentIndent = contentIndent
                     return
                 }
             }
@@ -122,52 +127,64 @@ enum TimelineMessageBlock: Equatable {
         /// A marker indented past the open list's own marker is a nested
         /// list, which stays as text inside the current item.
         private func isNested(_ indent: Int) -> Bool {
-            switch open {
-            case .bullets(let listIndent, _), .numbered(let listIndent, _, _): indent > listIndent
-            default: false
-            }
+            (kind == .bullets || kind == .numbered) && indent > listIndent
         }
 
         /// Plain text continues the open block: a list item, a quote or a paragraph.
         private mutating func appendText(_ line: Substring) {
-            switch open {
-            case .bullets(let indent, var items):
-                items[items.count - 1] += "\n" + line.drop { $0 == " " || $0 == "\t" }
-                open = .bullets(indent: indent, items: items)
-            case .numbered(let indent, let start, var items):
-                items[items.count - 1] += "\n" + line.drop { $0 == " " || $0 == "\t" }
-                open = .numbered(indent: indent, start: start, items: items)
-            case .quote(let lines):
-                open = .quote(lines + [line])
-            case .paragraph(let lines):
-                open = .paragraph(lines + [line])
+            switch kind {
+            case .bullets, .numbered:
+                items[items.count - 1].append("\n")
+                items[items.count - 1].append(contentsOf: line.drop(while: Self.isIndent))
+            case .quote, .paragraph:
+                lines.append(line)
             case .none, .fence:
-                open = .paragraph([line])
+                startBlock()
+                kind = .paragraph
+                lines.append(line)
             }
         }
 
+        /// Ends the open block before a block that isn't part of a list.
+        private mutating func startBlock() {
+            flush()
+            itemContentIndent = nil
+        }
+
         private mutating func flush() {
-            switch open {
-            case .none, .fence: break
-            case .paragraph(var lines):
-                while let last = lines.last, last.allSatisfy({ $0 == " " || $0 == "\t" }) { lines.removeLast() }
+            switch kind {
+            case .none, .fence: return
+            case .paragraph:
+                while let last = lines.last, Self.isBlank(last) { lines.removeLast() }
                 if !lines.isEmpty { blocks.append(.paragraph(lines.joined(separator: "\n"))) }
-            case .bullets(_, let items): blocks.append(.bullets(items))
-            case .numbered(_, let start, let items): blocks.append(.numbered(start: start, items: items))
-            case .quote(let lines): blocks.append(.quote(lines.joined(separator: "\n")))
+            case .quote: blocks.append(.quote(lines.joined(separator: "\n")))
+            case .bullets: blocks.append(.bullets(items))
+            case .numbered: blocks.append(.numbered(start: listStart, items: items))
             }
-            open = .none
+            kind = .none
+            lines.removeAll(keepingCapacity: true)
+            items.removeAll(keepingCapacity: true)
+        }
+
+        private mutating func emitFence() {
+            guard let fence else { return }
+            let shown = TimelineMarkdown.displayCode(lines.joined(separator: "\n"))
+            blocks.append(.code(language: fence.language, text: shown.text, removedHidden: shown.removedHidden))
+            self.fence = nil
+            kind = .none
+            lines.removeAll(keepingCapacity: true)
         }
 
         mutating func finish() -> [TimelineMessageBlock] {
             // An unterminated fence runs to the end of the message.
-            if case .fence(let fence) = open {
-                blocks.append(Self.code(fence))
-                open = .none
-            }
+            if kind == .fence { emitFence() }
             flush()
             return blocks
         }
+
+        private static func isIndent(_ character: Character) -> Bool { character == " " || character == "\t" }
+
+        private static func isBlank(_ line: Substring) -> Bool { line.allSatisfy(isIndent) }
 
         private static func indent(of line: Substring) -> Int {
             var count = 0
@@ -191,6 +208,9 @@ enum TimelineMessageBlock: Equatable {
             text.prefix { $0 == marker }.count
         }
 
+        /// The longest language label shown above a code block.
+        static let languageLimit = 40
+
         private static func openingFence(_ body: Substring, indent: Int) -> Fence? {
             guard let marker = body.first, marker == "`" || marker == "~" else { return nil }
             let length = run(of: marker, in: body)
@@ -198,21 +218,19 @@ enum TimelineMessageBlock: Equatable {
             let info = body.dropFirst(length).trimmingCharacters(in: .whitespaces)
             // A backtick fence's info string can't contain backticks.
             if marker == "`" && info.contains("`") { return nil }
-            let language = info.split(whereSeparator: \.isWhitespace).first.map(String.init)
-            return Fence(marker: marker, length: length, indent: indent, language: language)
+            // The label is shown, so it gets the same bidi removal as code, and a cap.
+            let language = info.split(whereSeparator: \.isWhitespace).first
+                .map { String(TimelineMarkdown.displayCode(String($0)).text.prefix(languageLimit)) }
+            return Fence(marker: marker, length: length, indent: indent,
+                         language: language?.isEmpty == false ? language : nil)
         }
 
         /// Closes on the same marker, at least as long, with nothing after it.
         private static func closes(_ fence: Fence, _ line: Substring) -> Bool {
-            guard Self.indent(of: line) <= 3 else { return false }
-            let body = line.drop { $0 == " " || $0 == "\t" }
+            guard indent(of: line) <= fence.indent + 3 else { return false }
+            let body = line.drop(while: isIndent)
             let length = run(of: fence.marker, in: body)
-            return length >= fence.length && body.dropFirst(length).allSatisfy { $0 == " " || $0 == "\t" }
-        }
-
-        private static func code(_ fence: Fence) -> TimelineMessageBlock {
-            let shown = TimelineMarkdown.displayCode(fence.lines.joined(separator: "\n"))
-            return .code(language: fence.language, text: shown.text, removedHidden: shown.removedHidden)
+            return length >= fence.length && body.dropFirst(length).allSatisfy(isIndent)
         }
 
         private static func heading(_ body: Substring) -> TimelineMessageBlock? {
@@ -227,14 +245,15 @@ enum TimelineMessageBlock: Equatable {
             } else if text.allSatisfy({ $0 == "#" }) {
                 text = ""
             }
-            return .heading(level: level, text: text)
+            // A bare "#" stays text rather than becoming an empty heading.
+            return text.isEmpty ? nil : .heading(level: level, text: text)
         }
 
         private static func isRule(_ body: Substring) -> Bool {
             guard let marker = body.first, marker == "-" || marker == "*" || marker == "_" else { return false }
             var count = 0
             for character in body {
-                if character == marker { count += 1 } else if character != " " && character != "\t" { return false }
+                if character == marker { count += 1 } else if !isIndent(character) { return false }
             }
             return count >= 3
         }
@@ -245,21 +264,25 @@ enum TimelineMessageBlock: Equatable {
             return rest.first == " " ? rest.dropFirst() : rest
         }
 
-        private static func bulletContent(_ body: Substring) -> Substring? {
+        /// The item's text and the column where it starts.
+        private static func bulletContent(_ body: Substring, indent: Int) -> (Substring, Int)? {
             guard let marker = body.first, marker == "-" || marker == "*" || marker == "+" else { return nil }
             let rest = body.dropFirst()
-            guard rest.isEmpty || rest.first == " " || rest.first == "\t" else { return nil }
-            return rest.drop { $0 == " " || $0 == "\t" }
+            guard rest.isEmpty || rest.first.map(isIndent) == true else { return nil }
+            let item = rest.drop(while: isIndent)
+            return (item, indent + body.distance(from: body.startIndex, to: item.startIndex))
         }
 
-        private static func numberedContent(_ body: Substring) -> (Int, Substring)? {
+        /// The number, the item's text, and the column where the text starts.
+        private static func numberedContent(_ body: Substring, indent: Int) -> (Int, Substring, Int)? {
             let digits = body.prefix { $0.isASCII && $0.isNumber }
             guard (1...9).contains(digits.count), let number = Int(digits) else { return nil }
             let rest = body.dropFirst(digits.count)
             guard let delimiter = rest.first, delimiter == "." || delimiter == ")" else { return nil }
             let after = rest.dropFirst()
-            guard after.isEmpty || after.first == " " || after.first == "\t" else { return nil }
-            return (number, after.drop { $0 == " " || $0 == "\t" })
+            guard after.isEmpty || after.first.map(isIndent) == true else { return nil }
+            let item = after.drop(while: isIndent)
+            return (number, item, indent + body.distance(from: body.startIndex, to: item.startIndex))
         }
     }
 }
@@ -272,27 +295,48 @@ enum TimelineMessageBlock: Equatable {
 struct TimelineCodeBlock: Equatable {
     static let inlineLineLimit = 40
     static let inlineCharacterLimit = 500
+    /// The sheet shows lines up to this long; Copy always has them in full.
+    static let sheetCharacterLimit = 10_000
 
     let language: String?
     /// The shown text: what Copy puts on the clipboard.
     let text: String
     let removedHidden: Bool
     let lines: [String]
+    /// Some line is longer than the inline view shows.
+    let hasLongLines: Bool
 
     init(language: String?, text: String, removedHidden: Bool) {
         self.language = language
         self.text = text
         self.removedHidden = removedHidden
         lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
+        hasLongLines = lines.contains { $0.count > Self.inlineCharacterLimit }
     }
 
     var isShortened: Bool { lines.count > Self.inlineLineLimit }
 
+    /// The sheet is offered whenever the inline view leaves anything out:
+    /// lines past the first 40, or the end of a long line.
+    var needsSheet: Bool { isShortened || hasLongLines }
+
     /// Long lines are cut so a minified one-line file can't build a huge view.
     var inlineLines: [String] {
-        lines.prefix(Self.inlineLineLimit).map { line in
-            line.count > Self.inlineCharacterLimit ? String(line.prefix(Self.inlineCharacterLimit)) + "…" : line
-        }
+        lines.prefix(Self.inlineLineLimit).map { Self.cut($0, at: Self.inlineCharacterLimit) }
+    }
+
+    /// Every line, each cut at a length a sheet can still lay out.
+    var sheetLines: [String] {
+        lines.map { Self.cut($0, at: Self.sheetCharacterLimit) }
+    }
+
+    /// Some line is too long even for the sheet.
+    var sheetCutsLines: Bool {
+        hasLongLines && lines.contains { $0.count > Self.sheetCharacterLimit }
+    }
+
+    private static func cut(_ line: String, at limit: Int) -> String {
+        line.count > limit ? String(line.prefix(limit)) + "…" : line
     }
 }
 
@@ -305,6 +349,19 @@ enum TimelineRenderedBlock: Equatable {
     case quote(AttributedString)
     case code(TimelineCodeBlock)
     case rule
+
+    /// The block's kind, for keeping view state with the right block.
+    var kind: String {
+        switch self {
+        case .paragraph: "paragraph"
+        case .heading: "heading"
+        case .bullets: "bullets"
+        case .numbered: "numbered"
+        case .quote: "quote"
+        case .code: "code"
+        case .rule: "rule"
+        }
+    }
 }
 
 enum TimelineMessageBlocks {
@@ -472,12 +529,21 @@ struct TimelineBlocksView: View {
     let blocks: [TimelineRenderedBlock]
     /// Used to name each code block for UI tests.
     let entryID: String
-    @ScaledMetric(relativeTo: .body) private var markerWidth: CGFloat = 22
+
+    private struct Keyed: Identifiable {
+        let index: Int
+        let block: TimelineRenderedBlock
+        var id: String { "\(index)-\(block.kind)" }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
-                switch block {
+            // Keyed by position and kind, so a code block's state (its sheet,
+            // "Copied") can't move to a different kind of block as a message
+            // streams in.
+            ForEach(blocks.enumerated().map { Keyed(index: $0.offset, block: $0.element) }) { keyed in
+                let index = keyed.index
+                switch keyed.block {
                 case .paragraph(let text):
                     bodyText(text)
                 case .heading(let level, let text):
@@ -486,6 +552,9 @@ struct TimelineBlocksView: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
+                        // Speaker rows are level 2, so the rotor can step
+                        // turn to turn without stopping at these.
+                        .accessibilityHeading(Self.headingLevel(level))
                 case .bullets(let items):
                     list(items, speaksMarker: false) { _ in "•" }
                 case .numbered(let start, let items):
@@ -516,19 +585,36 @@ struct TimelineBlocksView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// Items hang-indent past their marker, with 6pt between items. VoiceOver
-    /// reads a list's numbers but not its bullet glyphs.
+    /// Items hang-indent past their marker, with 6pt between items. The
+    /// marker column is as wide as the list's widest marker, so "9." and
+    /// "10." line up. VoiceOver reads a list's numbers but not its bullets.
     private func list(_ items: [AttributedString], speaksMarker: Bool,
                       marker: @escaping (Int) -> String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let widest = marker(max(0, items.count - 1))
+        return VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(marker(index)).font(.jost(.body)).monospacedDigit()
-                        .frame(minWidth: markerWidth, alignment: .trailing)
-                        .accessibilityHidden(!speaksMarker)
+                    ZStack(alignment: .trailing) {
+                        Text(widest).hidden()
+                        Text(marker(index))
+                    }
+                    .font(.jost(.body)).monospacedDigit()
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(marker(index))
+                    .accessibilityHidden(!speaksMarker)
                     bodyText(item)
                 }
             }
+        }
+    }
+
+    /// Message headings sit below the speaker rows' level 2.
+    private static func headingLevel(_ level: Int) -> AccessibilityHeadingLevel {
+        switch level {
+        case ...2: .h3
+        case 3: .h4
+        case 4: .h5
+        default: .h6
         }
     }
 }
@@ -575,8 +661,8 @@ struct TimelineCodeBlockView: View {
                     .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
                     .padding(.horizontal, 12).padding(.bottom, 10)
             }
-            if code.isShortened {
-                Button("Show all \(code.lines.count) lines") { showsAll = true }
+            if code.needsSheet {
+                Button(code.isShortened ? "Show all \(code.lines.count) lines" : "Show full lines") { showsAll = true }
                     .font(.jost(.caption, weight: .medium))
                     .foregroundStyle(Theme.accent)
                     .frame(minHeight: 44)
@@ -595,11 +681,19 @@ struct TimelineCodeBlockView: View {
     }
 
     private func copy() {
-        UIPasteboard.general.string = code.text
+        TimelineCodeBlockView.copy(code)
         copied = true
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(4))
             copied = false
+        }
+    }
+
+    /// Puts the shown code on the clipboard and tells VoiceOver it's there.
+    static func copy(_ code: TimelineCodeBlock) {
+        UIPasteboard.general.string = code.text
+        if UIAccessibility.isVoiceOverRunning {
+            UIAccessibility.post(notification: .announcement, argument: "Copied")
         }
     }
 }
@@ -609,6 +703,7 @@ private struct TimelineCodeSheet: View {
     let code: TimelineCodeBlock
     let onClose: () -> Void
     @Environment(\.colorScheme) private var colorScheme
+    @State private var copied = false
 
     var body: some View {
         let dark = colorScheme == .dark
@@ -616,7 +711,12 @@ private struct TimelineCodeSheet: View {
         NavigationStack {
             ScrollView([.vertical, .horizontal]) {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(code.lines.enumerated()), id: \.offset) { _, line in
+                    if code.sheetCutsLines {
+                        Text("Very long lines are shortened here. Copy has them in full.")
+                            .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                            .padding(.bottom, 12)
+                    }
+                    ForEach(Array(code.sheetLines.enumerated()), id: \.offset) { _, line in
                         Text(TimelineCodeHighlighter.highlight(line.isEmpty ? " " : line, colors: colors))
                             .font(.system(.footnote, design: .monospaced))
                             .fixedSize(horizontal: true, vertical: true)
@@ -634,8 +734,16 @@ private struct TimelineCodeSheet: View {
                         .accessibilityLabel("Close").accessibilityIdentifier("timeline-code-close")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Copy") { UIPasteboard.general.string = code.text }
-                        .accessibilityLabel("Copy code")
+                    Button(copied ? "Copied" : "Copy") {
+                        TimelineCodeBlockView.copy(code)
+                        copied = true
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(4))
+                            copied = false
+                        }
+                    }
+                    .accessibilityLabel(copied ? "Copied" : "Copy code")
+                    .accessibilityIdentifier("timeline-code-sheet-copy")
                 }
             }
         }

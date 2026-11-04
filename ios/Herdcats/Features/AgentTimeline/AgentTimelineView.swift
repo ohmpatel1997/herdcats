@@ -745,6 +745,9 @@ struct TimelineSpeakerRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
+        // Level 2: headings inside messages are lower, so the rotor can step
+        // turn to turn by level.
+        .accessibilityHeading(.h2)
         .accessibilityIdentifier("timeline-speaker-\(firstItemID)")
     }
 }

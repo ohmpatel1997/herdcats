@@ -86,6 +86,47 @@ struct TimelineMessageBlocksTests {
         ])
         #expect(TimelineMessageBlock.parse("# C#") == [.heading(level: 1, text: "C#")])
         #expect(TimelineMessageBlock.parse("####### seven") == [.paragraph("####### seven")])
+        // A bare "#" stays text, not an empty heading.
+        #expect(TimelineMessageBlock.parse("#\n\n- a") == [.paragraph("#"), .bullets(["a"])])
+    }
+
+    @Test func numberedStepsSeparatedByTextKeepTheirNumbers() {
+        // Agents often explain each step between the steps.
+        #expect(TimelineMessageBlock.parse(
+            "1. Install the app\n\nThis installs the bridge.\n\n2. Configure it\n\nThis writes the config.\n\n3. Run it") == [
+            .numbered(start: 1, items: ["Install the app"]),
+            .paragraph("This installs the bridge."),
+            .numbered(start: 2, items: ["Configure it"]),
+            .paragraph("This writes the config."),
+            .numbered(start: 3, items: ["Run it"]),
+        ])
+        #expect(TimelineMessageBlock.parse("Done so far:\n\n3. Run tests\n4. Deploy")
+                == [.paragraph("Done so far:"), .numbered(start: 3, items: ["Run tests", "Deploy"])])
+        // Text right under an item, with no blank line, continues that item.
+        #expect(TimelineMessageBlock.parse("1. a\ntext\n2. b") == [.numbered(start: 1, items: ["a\ntext", "b"])])
+    }
+
+    @Test func aFenceAfterANumberedItemKeepsTheListGoing() {
+        let expected: [TimelineMessageBlock] = [
+            .numbered(start: 1, items: ["Build:"]),
+            .code(language: "sh", text: "make", removedHidden: false),
+            .numbered(start: 2, items: ["Run"]),
+        ]
+        #expect(TimelineMessageBlock.parse("1. Build:\n```sh\nmake\n```\n2. Run") == expected)
+        #expect(TimelineMessageBlock.parse("1. Build:\n   ```sh\n   make\n   ```\n2. Run") == expected)
+        // Indented to the item's text, even after a blank line.
+        #expect(TimelineMessageBlock.parse("1. Build:\n\n    ```sh\n    make\n    ```\n2. Run") == expected)
+        // The same indent with no list above is not a fence.
+        let indented = "Text\n\n    ```sh\n    make\n    ```"
+        #expect(TimelineMessageBlock.parse(indented) == [.paragraph(indented)])
+    }
+
+    @Test func codeLanguageLabelsAreCleanedAndCapped() {
+        #expect(TimelineMessageBlock.parse("```sw\u{202E}ift\nx\n```")
+                == [.code(language: "swift", text: "x", removedHidden: false)])
+        let long = String(repeating: "a", count: 80)
+        #expect(TimelineMessageBlock.parse("```\(long)\nx\n```")
+                == [.code(language: String(repeating: "a", count: 40), text: "x", removedHidden: false)])
     }
 
     @Test func codeBlocksNeverProduceLinks() {
@@ -152,7 +193,22 @@ struct TimelineMessageBlocksTests {
         #expect(code.inlineLines[0].count == 501)
         #expect(code.inlineLines[0].hasSuffix("…"))
         #expect(code.isShortened)
-        #expect(!TimelineCodeBlock(language: nil, text: "a\nb", removedHidden: false).isShortened)
+        #expect(code.needsSheet)
+        #expect(code.sheetLines[0].count == 600)
+        let short = TimelineCodeBlock(language: nil, text: "a\nb", removedHidden: false)
+        #expect(!short.isShortened)
+        #expect(!short.needsSheet)
+        // A short block with one long line still offers the sheet.
+        let wide = TimelineCodeBlock(language: nil, text: "a\n" + long, removedHidden: false)
+        #expect(!wide.isShortened)
+        #expect(wide.needsSheet)
+        // A minified line is cut in the sheet too; Copy keeps it whole.
+        let minified = String(repeating: "x", count: 50_000)
+        let huge = TimelineCodeBlock(language: nil, text: minified, removedHidden: false)
+        #expect(huge.sheetCutsLines)
+        #expect(huge.sheetLines[0].count == TimelineCodeBlock.sheetCharacterLimit + 1)
+        #expect(huge.text.count == 50_000)
+        #expect(!wide.sheetCutsLines)
     }
 
     @Test func hugeMessagesSkipBlockParsing() {
@@ -160,6 +216,31 @@ struct TimelineMessageBlocksTests {
         #expect(TimelineMessageBlocks.render(huge).count == 1)
         guard case .paragraph = TimelineMessageBlocks.render(huge)[0] else {
             Issue.record("Expected one paragraph"); return
+        }
+    }
+
+    /// One long paragraph, quote or fence: doubling it must roughly double
+    /// the time. A parser that rebuilds the block on every line would take
+    /// about four times as long; the 3× bound leaves room for runner noise.
+    @Test func longSingleBlocksParseInLinearTime() {
+        func block(_ shape: String, _ count: Int) -> String {
+            let lines = (1...count).map { "line \($0) of a long agent log that keeps going" }
+            switch shape {
+            case "quote": return lines.map { "> " + $0 }.joined(separator: "\n")
+            case "fence": return "```\n" + lines.joined(separator: "\n") + "\n```"
+            default: return lines.joined(separator: "\n")
+            }
+        }
+        func fastest(_ text: String) -> Duration {
+            (0..<3).map { _ in ContinuousClock().measure { _ = TimelineMessageBlock.parse(text) } }.min()!
+        }
+        for shape in ["paragraph", "quote", "fence"] {
+            let small = block(shape, 10_000), large = block(shape, 20_000)
+            let parsed = TimelineMessageBlock.parse(large)
+            #expect(parsed.count == 1, "\(shape)")
+            _ = fastest(small)
+            let ratio = fastest(large) / fastest(small)
+            #expect(ratio < 3, "\(shape): 20,000 lines took \(ratio)× as long as 10,000")
         }
     }
 

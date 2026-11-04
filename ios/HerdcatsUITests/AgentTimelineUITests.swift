@@ -864,9 +864,10 @@ final class AgentTimelineUITests: XCTestCase {
         code.lifetime = .keepAlways
         add(code)
         copy.tap()
-        let copied = NSPredicate { _, _ in copy.label == "Copied" }
-        expectation(for: copied, evaluatedWith: nil)
-        waitForExpectations(timeout: 3)
+        // The button reads "Copied" for a few seconds; wait for that element.
+        let copied = app.buttons.matching(NSPredicate(
+            format: "identifier == %@ AND label == %@", "timeline-code-copy-message:rich-5", "Copied")).firstMatch
+        XCTAssertTrue(copied.waitForExistence(timeout: 3))
         // A long block shows 40 lines inline and the rest in a sheet.
         let showAll = app.buttons["timeline-code-all-message:log-1"]
         for _ in 0..<6 where !(showAll.exists && showAll.isHittable) { scroll.swipeUp() }
