@@ -10,6 +10,13 @@ enum HerdrError: LocalizedError, Equatable {
     case invalidConfiguration(String)
     case notConnected
     case herdrNotFound
+    /// Herdr Core's channel closed before Core finished starting. A machine
+    /// without `hc` fails this way: the start command exits at once, and its
+    /// message goes to stderr, which is not read.
+    case coreStartupClosed
+    /// SSH worked, but the connection's runtime isn't installed. `available` is
+    /// the runtime the machine has instead, or nil when it has neither.
+    case runtimeNotInstalled(saved: ConnectionBackend, available: ConnectionBackend?)
     case sessionUnavailable
     case quotaAxiNotFound
     case herdrExit(Int)
@@ -25,6 +32,15 @@ enum HerdrError: LocalizedError, Equatable {
             "Connecting to your Herdr machine…"
         case .herdrNotFound:
             "herdr was not found on the remote machine. Make sure herdr is installed and available in your PATH."
+        case .coreStartupClosed:
+            "Could not open Herdr Core on this machine. "
+                + "Check that hc is installed and its Core session is available, then reconnect using Core."
+        case let .runtimeNotInstalled(saved, .some(available)):
+            "This machine runs \(available.runtimeName), but this connection is set to \(saved.runtimeName), "
+                + "which isn't installed there. Use \(available.runtimeName) for this machine instead."
+        case .runtimeNotInstalled(_, .none):
+            "Herdr was not found on the remote machine. "
+                + "Install the Herdr desktop app, Herdr Core, or the Herdr TUI there, then connect again."
         case .sessionUnavailable:
             "Herdr is installed, but Herdcats could not read its default session. "
                 + "Start or check Herdr on the remote machine, then try again."

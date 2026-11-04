@@ -170,7 +170,12 @@ struct ConnectionSettingsView: View {
                     if let switchConnectionError { ErrorBanner(message: switchConnectionError) }
                     if switcher == nil, let error = appModel.lastError {
                         if appModel.herdrMissingOnLastConnect {
-                            MissingHerdrRecoveryCard(inForm: true) { showingSetupGuide = true }
+                            MissingHerdrRecoveryCard(
+                                inForm: true,
+                                mismatch: appModel.runtimeMismatchOnLastConnect,
+                                onConnect: connectWithInstalledRuntimeAction,
+                                onSetup: { showingSetupGuide = true }
+                            )
                         } else if appModel.herdrSessionUnavailableOnLastConnect {
                             SessionRecoveryCard(inForm: true)
                         } else {
@@ -398,6 +403,31 @@ struct ConnectionSettingsView: View {
             if switcher != nil { switchConnectionError = error.localizedDescription }
             else { appModel.lastError = error.localizedDescription }
         }
+    }
+
+    /// The missing-runtime card's button, offered when the failed connection is
+    /// this form's machine and runtime.
+    var connectWithInstalledRuntimeAction: (() -> Void)? {
+        guard !isReplay, let mismatch = appModel.runtimeMismatchOnLastConnect,
+              appModel.lastConnectWasFor(destination) else { return nil }
+        return { Task { await connectWithInstalledRuntime(mismatch.installed) } }
+    }
+
+    /// Saves the runtime the machine has as a second entry, unless one is saved
+    /// already, then switches this form to it and connects. The saved entry for
+    /// the missing runtime is not changed.
+    func connectWithInstalledRuntime(_ installed: ConnectionBackend) async {
+        guard !isConnecting, credentialLoadError == nil else { return }
+        do {
+            // Saving it first means the form picks that entry below. In edit mode,
+            // switching the runtime alone would move this entry to the other runtime.
+            _ = try signIn().siblingToConnect(installed)
+        } catch {
+            appModel.showPlainError(error.localizedDescription)
+            return
+        }
+        backend = installed
+        await connect()
     }
 
     private func handleSwitchOutcome(_ outcome: ActiveMachine.SwitchOutcome) {

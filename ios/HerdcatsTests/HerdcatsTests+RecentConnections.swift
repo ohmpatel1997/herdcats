@@ -610,6 +610,7 @@ extension SavedConnectionWorkflowTests {
         #expect(AppModel.needsSignIn(after: AuthenticationFailure()))
         #expect(AppModel.needsSignIn(after: OpenSSHKeyError.invalidPassphraseOrKey))
         #expect(!AppModel.needsSignIn(after: HerdrError.herdrNotFound))
+        #expect(!AppModel.needsSignIn(after: HerdrError.runtimeNotInstalled(saved: .tui, available: .core)))
         #expect(!AppModel.needsSignIn(after: SSHHostKeyStore.StoreError(status: errSecAuthFailed)))
         #expect(!AppModel.needsSignIn(after: CancellationError()))
     }
@@ -883,5 +884,67 @@ extension SavedConnectionWorkflowTests {
         #expect(defaults.data(forKey: RecentConnectionStore.storageKey) == before)
         #expect(keychain.items[entry.secretAccount] != nil)
         #expect(try draft.save(defaults: defaults, using: keychain).isEmpty)
+    }
+
+    @Test(arguments: [ConnectionBackend.tui, .core])
+    func connectWithInstalledRuntimeAddsASecondEntryAndKeepsTheFirst(savedRuntime: ConnectionBackend) throws {
+        let suite = "InstalledRuntime.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let installed: ConnectionBackend = savedRuntime == .tui ? .core : .tui
+        var original = entry
+        original.backend = savedRuntime
+        original.lastConnectedAt = Date(timeIntervalSince1970: 1)
+        defaults.set(try JSONEncoder().encode([original]), forKey: RecentConnectionStore.storageKey)
+        try KeychainStore.save("pw", account: original.secretAccount, using: keychain)
+
+        // What the card's button saves before it connects.
+        let sibling = try ConnectionSignIn.load(original, using: keychain)
+            .siblingToConnect(installed, defaults: defaults, using: keychain)
+        var saved = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+        let kept = try #require(saved.first { $0.id == original.id })
+        #expect(kept.backend == savedRuntime)
+        #expect(try ConnectionSignIn.load(kept, using: keychain).secret == "pw")
+        let added = try #require(saved.first { $0.backend == installed })
+        #expect(added.id == sibling.entry.id)
+        #expect(added.id != original.id)
+        #expect(sibling.config.backend == installed)
+        #expect(try ConnectionSignIn.load(added, using: keychain).secret == "pw")
+        // The machine card lists both runtimes, its long-press menu offers both,
+        // and it still opens with the one used last.
+        #expect(RecentConnectionStore.runtimeSummary(of: kept, in: saved) == "TUI + Herdr Core")
+        #expect(RecentConnectionStore.savedRuntimes(of: kept, in: saved).map(\.backend) == [.tui, .core])
+        #expect(RecentConnectionStore.servers(saved).map(\.id) == [original.id])
+
+        // A successful connect saves the new entry as used last, so the card opens with it.
+        try sibling.persist(defaults: defaults, using: keychain)
+        saved = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+        #expect(RecentConnectionStore.servers(saved).map(\.id) == [added.id])
+        #expect(saved.first { $0.id == original.id }?.backend == savedRuntime)
+    }
+
+    @Test func connectWithInstalledRuntimeKeepsASavedEntrysPassword() throws {
+        let suite = "InstalledRuntimeSaved.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let core = RecentConnection(host: entry.host, port: entry.port, username: entry.username,
+                                    authMode: "password", remember: true, backend: .core)
+        defaults.set(try JSONEncoder().encode([entry, core]), forKey: RecentConnectionStore.storageKey)
+        try KeychainStore.save("core-secret", account: core.secretAccount, using: keychain)
+
+        // A password typed in the sign-in sheet with "Save credentials" off.
+        var typed = ConnectionSignIn(entry: entry, secret: "typed")
+        typed.entry.remember = false
+        let sibling = try typed.siblingToConnect(.core, defaults: defaults, using: keychain)
+        #expect(sibling.entry.id == core.id)
+        #expect(sibling.entry.backend == .core)
+        #expect(sibling.entry.remember)
+        #expect(sibling.secret == "typed")
+        // Preparing the connect, as the sheet does next, leaves Core's saved password alone.
+        try sibling.prepareAttempt(defaults: defaults, using: keychain)
+        #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain).map(\.id) == [entry.id, core.id])
+        #expect(try KeychainStore.load(account: core.secretAccount, using: keychain) == "core-secret")
     }
 }

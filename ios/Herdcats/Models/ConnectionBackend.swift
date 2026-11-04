@@ -12,4 +12,12 @@ enum ConnectionBackend: String, Codable, CaseIterable, Identifiable, Sendable {
         case .core: "Herdr Core"
         }
     }
+
+    /// The runtime's name inside a sentence.
+    var runtimeName: String {
+        switch self {
+        case .tui: "the Herdr TUI"
+        case .core: "Herdr Core"
+        }
+    }
 }

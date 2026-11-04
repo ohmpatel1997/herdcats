@@ -83,6 +83,46 @@ struct CoreConnectionProfileTests {
         #expect(HerdrConnection.detectedBackends("motd\n").isEmpty)
     }
 
+    @Test func onlyAMissingRuntimeStartsTheRuntimeCheck() {
+        #expect(HerdrConnection.mayMeanRuntimeIsMissing(HerdrError.herdrNotFound, backend: .tui))
+        #expect(HerdrConnection.mayMeanRuntimeIsMissing(HerdrError.coreStartupClosed, backend: .core))
+        // Herdr answered or the connection failed, so the runtime is not the problem.
+        #expect(!HerdrConnection.mayMeanRuntimeIsMissing(HerdrError.herdrExit(1), backend: .tui))
+        #expect(!HerdrConnection.mayMeanRuntimeIsMissing(HerdrError.timeout("herdr command"), backend: .tui))
+        #expect(!HerdrConnection.mayMeanRuntimeIsMissing(CoreRPCError.unsupportedGeneration, backend: .core))
+        #expect(!HerdrConnection.mayMeanRuntimeIsMissing(HerdrError.notConnected, backend: .core))
+    }
+
+    @Test func missingSavedRuntimeNamesTheRuntimeTheMachineHas() {
+        let tuiMissing = HerdrError.herdrNotFound
+        let coreMissing = HerdrError.coreStartupClosed
+        func reported(_ error: HerdrError, saved: ConnectionBackend, found: Set<ConnectionBackend>?) -> HerdrError? {
+            HerdrConnection.missingRuntimeError(error, saved: saved, found: found) as? HerdrError
+        }
+        // A TUI entry on a machine with only Herdr Core, and the reverse.
+        #expect(reported(tuiMissing, saved: .tui, found: [.core]) == .runtimeNotInstalled(saved: .tui, available: .core))
+        #expect(reported(coreMissing, saved: .core, found: [.tui]) == .runtimeNotInstalled(saved: .core, available: .tui))
+        // Neither runtime is on the machine.
+        #expect(reported(tuiMissing, saved: .tui, found: []) == .runtimeNotInstalled(saved: .tui, available: nil))
+        #expect(reported(coreMissing, saved: .core, found: []) == .runtimeNotInstalled(saved: .core, available: nil))
+        // The saved runtime is there after all, or the check could not run: keep the first error.
+        #expect(reported(coreMissing, saved: .core, found: [.tui, .core]) == coreMissing)
+        #expect(reported(tuiMissing, saved: .tui, found: nil) == tuiMissing)
+    }
+
+    @Test func missingRuntimeMessagesSayWhatIsInstalled() {
+        let tuiOnCore = HerdrConnection.friendlyMessage(for: HerdrError.runtimeNotInstalled(saved: .tui, available: .core))
+        #expect(tuiOnCore.contains("This machine runs Herdr Core"))
+        #expect(tuiOnCore.contains("set to the Herdr TUI"))
+        let coreOnTUI = HerdrConnection.friendlyMessage(for: HerdrError.runtimeNotInstalled(saved: .core, available: .tui))
+        #expect(coreOnTUI.contains("This machine runs the Herdr TUI"))
+        #expect(coreOnTUI.contains("set to Herdr Core"))
+        let neither = HerdrConnection.friendlyMessage(for: HerdrError.runtimeNotInstalled(saved: .tui, available: nil))
+        #expect(neither.contains("Install the Herdr desktop app, Herdr Core, or the Herdr TUI"))
+        // When Core is installed but won't open, the message stays as it was.
+        #expect(HerdrConnection.friendlyMessage(for: HerdrError.coreStartupClosed).hasPrefix("Could not open Herdr Core"))
+    }
+
     @Test func autoConnectSavesBothRuntimesWithOneSignIn() throws {
         let suite = "CoreConnectionProfileTests.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))

@@ -41,7 +41,12 @@ struct ConnectView: View {
             VStack(spacing: 26) {
                 if let error = appModel.lastError {
                     if appModel.herdrMissingOnLastConnect {
-                        MissingHerdrRecoveryCard(inForm: false) { showingSetupGuide = true }
+                        MissingHerdrRecoveryCard(
+                            inForm: false,
+                            mismatch: appModel.runtimeMismatchOnLastConnect,
+                            onConnect: connectWithInstalledRuntimeAction,
+                            onSetup: { showingSetupGuide = true }
+                        )
                     } else if appModel.herdrSessionUnavailableOnLastConnect {
                         SessionRecoveryCard(inForm: false)
                     } else {
@@ -344,12 +349,39 @@ struct ConnectView: View {
                 appModel.lastError = nil
                 appModel.lastConnectNeedsSignIn = false
                 appModel.herdrMissingOnLastConnect = false
+                appModel.runtimeMismatchOnLastConnect = nil
                 appModel.herdrSessionUnavailableOnLastConnect = false
             }
             let value = try ConnectionSignIn.load(connection, readOnly: replay)
             attemptedSignIn = value
             if value.isReady { await dial(value) } else { signIn = value }
         } catch { appModel.lastError = error.localizedDescription }
+    }
+
+    /// The missing-runtime card's button, offered when the failed connection is
+    /// one of the machines listed here.
+    private var connectWithInstalledRuntimeAction: (() -> Void)? {
+        guard !replay, let mismatch = appModel.runtimeMismatchOnLastConnect,
+              let entry = recentConnections.first(where: { appModel.lastConnectWasFor($0) }) else { return nil }
+        return { Task { await connectWithInstalledRuntime(mismatch.installed, from: entry) } }
+    }
+
+    /// Saves the runtime the machine has as a second entry for it, unless one is
+    /// saved already, then connects with that entry. `entry` stays as it was.
+    private func connectWithInstalledRuntime(_ backend: ConnectionBackend, from entry: RecentConnection) async {
+        guard !attempting, !appModel.isConnecting else { return }
+        do {
+            let value: ConnectionSignIn
+            if let attemptedSignIn, attemptedSignIn.entry.id == entry.id {
+                // The sign-in that just reached the machine.
+                value = attemptedSignIn
+            } else {
+                value = try ConnectionSignIn.load(entry)
+            }
+            let sibling = try value.siblingToConnect(backend)
+            recentConnections = try RecentConnectionStore.load()
+            await connectSaved(recentConnections.first { $0.id == sibling.entry.id } ?? sibling.entry)
+        } catch { appModel.showPlainError(error.localizedDescription) }
     }
 
     private func dial(_ value: ConnectionSignIn) async {
@@ -370,26 +402,52 @@ struct ConnectView: View {
 /// authentication fields update together, including on the first presentation.
 struct MissingHerdrRecoveryCard: View {
     let inForm: Bool
+    /// Set when the machine has the other runtime; nil when it has neither.
+    var mismatch: AppModel.RuntimeMismatch?
+    /// Connects with the runtime the machine has. The card shows the button only when this is set.
+    var onConnect: (() -> Void)?
+    /// Opens the setup steps when Herdr was not found. When the machine has the
+    /// other runtime, the card opens that runtime's steps itself.
     let onSetup: () -> Void
+    @State private var showingInstalledRuntimeSetup = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("SSH worked. Herdr was not found.")
-                .font(.jost(.headline))
-            Text(
-                "Install Herdr on the remote machine. "
-                + (inForm
-                    ? "Your connection details stay in this form. Then tap Connect again."
-                    : "Then tap your machine to connect again.")
-            )
-                .font(.jost(.subheadline))
-                .foregroundStyle(.secondary)
-            Button("See Setup Steps", action: onSetup)
-                .buttonStyle(.herdrSecondary())
+            if let mismatch {
+                Text("SSH worked. This machine runs \(mismatch.installed.runtimeName).")
+                    .font(.jost(.headline))
+                Text("This connection is set to \(mismatch.saved.runtimeName), which isn't installed here.")
+                    .font(.jost(.subheadline))
+                    .foregroundStyle(.secondary)
+                if let onConnect {
+                    Button("Connect with \(mismatch.installed.title)", action: onConnect)
+                        .buttonStyle(.herdrPrimary())
+                }
+                Button("See Setup Steps") { showingInstalledRuntimeSetup = true }
+                    .font(.jost(.subheadline))
+            } else {
+                Text("SSH worked. Herdr was not found.")
+                    .font(.jost(.headline))
+                Text(
+                    "Install the Herdr desktop app, Herdr Core, or the Herdr TUI on the remote machine. "
+                    + (inForm
+                        ? "Your connection details stay in this form. Then tap Connect again."
+                        : "Then tap your machine to connect again.")
+                )
+                    .font(.jost(.subheadline))
+                    .foregroundStyle(.secondary)
+                Button("See Setup Steps", action: onSetup)
+                    .buttonStyle(.herdrSecondary())
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .herdrCard()
+        .sheet(isPresented: $showingInstalledRuntimeSetup) {
+            // Steps for the runtime the machine has. Installing the missing one would
+            // start a second, separate Herdr.
+            HerdrSetupGuideView(backend: mismatch?.installed ?? .tui)
+        }
     }
 }
 
@@ -575,8 +633,19 @@ struct SavedConnectionSignInView: View {
                         ErrorBanner(message: error)
                     }
                     if appModel.herdrMissingOnLastConnect {
-                        Text("Install Herdr on this machine, then try Connect again.")
-                        Link("Herdr Quick Start", destination: URL(string: "https://herdr.dev/docs/quick-start/")!)
+                        if let mismatch = appModel.runtimeMismatchOnLastConnect {
+                            // The error above names the runtime the machine has.
+                            if canConnectWithInstalledRuntime {
+                                Button("Connect with \(mismatch.installed.title)") {
+                                    Task { await connectWithInstalledRuntime(mismatch.installed) }
+                                }
+                                .buttonStyle(.herdrSecondary())
+                                .disabled(attempting)
+                            }
+                        } else {
+                            Text("Install the Herdr desktop app, Herdr Core, or the Herdr TUI on this machine, then try Connect again.")
+                            Link("Herdr Quick Start", destination: URL(string: "https://herdr.dev/docs/quick-start/")!)
+                        }
                     } else if appModel.herdrSessionUnavailableOnLastConnect {
                         SessionRecoveryCard(inForm: true)
                     }
@@ -702,6 +771,24 @@ struct SavedConnectionSignInView: View {
             if switcher != nil { switchError = error.localizedDescription }
             else { appModel.lastError = error.localizedDescription }
         }
+    }
+
+    /// The last connect failed for this sign-in's machine and runtime.
+    private var canConnectWithInstalledRuntime: Bool {
+        switcher == nil && !replay && appModel.lastConnectWasFor(value.entry)
+    }
+
+    /// Saves the runtime the machine has as a second entry, unless one is saved
+    /// already, then connects with it using this sign-in.
+    private func connectWithInstalledRuntime(_ backend: ConnectionBackend) async {
+        guard !attempting, !appModel.isConnecting else { return }
+        do {
+            value = try value.siblingToConnect(backend)
+        } catch {
+            appModel.showPlainError(error.localizedDescription)
+            return
+        }
+        await connect()
     }
 
     private func handleSwitchOutcome(_ outcome: ActiveMachine.SwitchOutcome) {
