@@ -487,9 +487,9 @@ struct TimelineBlocksView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
                 case .bullets(let items):
-                    list(items) { _ in "•" }
+                    list(items, speaksMarker: false) { _ in "•" }
                 case .numbered(let start, let items):
-                    list(items) { "\(start + $0)." }
+                    list(items, speaksMarker: true) { "\(start + $0)." }
                 case .quote(let text):
                     HStack(alignment: .top, spacing: 10) {
                         RoundedRectangle(cornerRadius: 1.5).fill(Theme.accent).frame(width: 3)
@@ -516,14 +516,16 @@ struct TimelineBlocksView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// Items hang-indent past their marker, with 6pt between items.
-    private func list(_ items: [AttributedString], marker: @escaping (Int) -> String) -> some View {
+    /// Items hang-indent past their marker, with 6pt between items. VoiceOver
+    /// reads a list's numbers but not its bullet glyphs.
+    private func list(_ items: [AttributedString], speaksMarker: Bool,
+                      marker: @escaping (Int) -> String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(marker(index)).font(.jost(.body)).monospacedDigit()
                         .frame(minWidth: markerWidth, alignment: .trailing)
-                        .accessibilityHidden(true)
+                        .accessibilityHidden(!speaksMarker)
                     bodyText(item)
                 }
             }
