@@ -853,7 +853,9 @@ final class AgentTimelineUITests: XCTestCase {
         launch(app)
         let scroll = app.scrollViews["agent-timeline-scroll"]
         XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        // The conversation is taller than a phone screen; start at its top.
         let mine = app.descendants(matching: .any)["timeline-message-message:user"].firstMatch
+        for _ in 0..<4 where !(mine.exists && mine.isHittable) { scroll.swipeDown() }
         XCTAssertTrue(mine.waitForExistence(timeout: 5))
         XCTAssertEqual(mine.label, "You")
         XCTAssertEqual(mine.value as? String, "Review the connection guidance and make it clearer in light mode.")
@@ -880,7 +882,7 @@ final class AgentTimelineUITests: XCTestCase {
         add(first)
         // The second turn: your image and message, then the agent named again.
         let fix = app.descendants(matching: .any)["timeline-speaker-message:fix"].firstMatch
-        for _ in 0..<4 where !fix.exists { scroll.swipeUp() }
+        for _ in 0..<4 where !(fix.exists && fix.isHittable) { scroll.swipeUp() }
         XCTAssertTrue(fix.waitForExistence(timeout: 5))
         XCTAssertEqual(fix.label, "Claude")
         let followup = app.descendants(matching: .any)["timeline-message-message:followup"].firstMatch
