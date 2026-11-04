@@ -83,9 +83,9 @@ extension ConnectionSettingsView {
                     HStack(spacing: 8) {
                         Group {
                             if showPassword {
-                                TextField("Password", text: $password)
+                                TextField("Password", text: passwordInput)
                             } else {
-                                SecureField("Password", text: $password)
+                                SecureField("Password", text: passwordInput)
                             }
                         }
                         .textFieldStyle(.plain)
@@ -107,15 +107,15 @@ extension ConnectionSettingsView {
 
             case .privateKey:
                 VStack(alignment: .leading, spacing: 8) {
-                    ConnectionPrivateKeyField(key: $keyPEM) { keyImporterPresented = true }
+                    ConnectionPrivateKeyField(key: privateKeyInput) { keyImporterPresented = true }
                     if !keyPEM.isEmpty && keyValidationError != nil {
                         Label("Check private key", systemImage: "key")
                             .font(.jost(.subheadline))
                     }
                     if keyIsEncrypted {
-                        ConnectionPassphraseField(passphrase: $keyPassphrase)
+                        ConnectionPassphraseField(passphrase: passphraseInput)
                         if remember {
-                            Toggle("Save passphrase on this iPhone", isOn: $rememberPassphrase)
+                            Toggle("Save passphrase on this iPhone", isOn: rememberPassphraseInput)
                                 .font(.jost(.footnote))
                                 .tint(Theme.accent)
                         }
@@ -175,12 +175,10 @@ extension ConnectionSettingsView {
                 }
                 .onChange(of: keyPEM) { _, _ in
                     importErrorMessage = nil
-                    keyPassphrase = ""
-                    rememberPassphrase = false
                 }
             }
 
-            Toggle("Save credentials on this iPhone", isOn: $remember)
+            Toggle("Save credentials on this iPhone", isOn: rememberInput)
                 .font(.jost(.footnote))
                 .tint(Theme.accent)
 

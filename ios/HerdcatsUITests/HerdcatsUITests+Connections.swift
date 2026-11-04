@@ -3,6 +3,135 @@ import UIKit
 import XCTest
 
 extension HerdcatsUITests {
+    func testConnectionKeyAndPassphraseDraftsSurviveOtherEditsAndReopen() throws {
+        let encryptedKey = """
+        -----BEGIN OPENSSH PRIVATE KEY-----
+        b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBQsNNQDE
+        3OeNlbiirYuF51AAAAQAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIEHiHx4Brcpqh9OW
+        lY7YKkM3HN1yOFbJNYbUClrT7q+MAAAAoPXvIQDoTJK/XrKBIF2kuCD9KIPYTstdeLIEcI
+        heoaAWhTJoeN0uixLdLK2E0qnaOA4teelJmrqntGC3kaWAOknVv7UPGceybXd82nYykl/s
+        xiPxdhHmIcm/mO6Bw1Cve9cJZF6k2sd0EBzfwnaFImLcSF3oL/T6Cf/JS6vTFOWHjh+anc
+        1Jzhj402WYisxnyveuTPZGidiF24UyVUEMyEs=
+        -----END OPENSSH PRIVATE KEY-----
+        """
+        let app = XCUIApplication()
+        let id = UUID().uuidString
+        let fixtures: [[String: Any]] = [["id": id, "host": "key-settings-test.invalid", "port": 22,
+            "username": "alice", "secret": encryptedKey, "authMode": "privateKey", "name": "Key settings fixture"]]
+        app.launchEnvironment["HC_SAVED_MACHINES"] = String(decoding: try JSONSerialization.data(withJSONObject: fixtures), as: UTF8.self)
+        app.launchArguments = ["-hc.seed-machines", "-launchPreference", "connectionSelection", "-hc.onboardingIntroSeen", "YES"]
+        app.launch()
+        defer { app.terminate() }
+        let settings = app.buttons["settings-machine-" + id]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        let phrase = app.secureTextFields["Key passphrase"]
+        XCTAssertTrue(phrase.waitForExistence(timeout: 5))
+        let rememberPhrase = app.switches["Save passphrase on this iPhone"]
+        rememberPhrase.tap()
+        XCTAssertEqual(rememberPhrase.value as? String, "1")
+        phrase.tap()
+        phrase.typeText("draft-passphrase")
+        app.buttons["Show Private Key"].tap()
+        let editor = app.textViews["Private key"]
+        // Split a base64 line without changing the key's decoded contents.
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).tap()
+        editor.typeText("\n")
+        app.buttons["Hide Private Key"].tap()
+        XCTAssertEqual((phrase.value as? String)?.count, "draft-passphrase".count,
+                       "Editing the key must preserve the passphrase draft")
+        // Save through Password while the private key and passphrase have in-progress edits.
+        app.segmentedControls.buttons["Password"].tap()
+        let password = app.secureTextFields["Password"]
+        password.tap()
+        password.typeText("fixture-password")
+        app.buttons["Save changes"].tap()
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        app.terminate()
+        app.launchEnvironment.removeValue(forKey: "HC_SAVED_MACHINES")
+        app.launchArguments = ["-launchPreference", "connectionSelection"]
+        app.launch()
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        XCTAssertTrue(password.waitForExistence(timeout: 5))
+        XCTAssertEqual((password.value as? String)?.count, "fixture-password".count)
+        app.segmentedControls.buttons["Private Key"].tap()
+        app.buttons["Show Private Key"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertEqual((editor.value as? String)?.count, encryptedKey.count + 1)
+        XCTAssertEqual((phrase.value as? String)?.count, "draft-passphrase".count)
+        XCTAssertEqual(rememberPhrase.value as? String, "1")
+    }
+
+    /// Uses only a synthetic saved profile; never connects to an SSH server.
+    func testConnectionEditsPreservePasswordAcrossSaveAndRelaunch() throws {
+        let app = XCUIApplication()
+        let id = UUID().uuidString
+        let fixtures: [[String: Any]] = [["id": id, "host": "settings-test.invalid", "port": 22,
+            "username": "alice", "secret": "saved-fixture-password", "authMode": "password", "name": "Settings fixture"]]
+        app.launchEnvironment["HC_SAVED_MACHINES"] = String(decoding: try JSONSerialization.data(withJSONObject: fixtures), as: UTF8.self)
+        app.launchArguments = ["-hc.seed-machines", "-launchPreference", "connectionSelection", "-hc.onboardingIntroSeen", "YES"]
+        app.launch()
+        defer { app.terminate() }
+        let settings = app.buttons["settings-machine-" + id]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        let username = app.textFields["whoami"]
+        XCTAssertTrue(username.waitForExistence(timeout: 5))
+        username.tap()
+        username.typeText("2")
+        let password = app.secureTextFields["Password"]
+        XCTAssertEqual((password.value as? String)?.count, "saved-fixture-password".count,
+                       "Editing the username must preserve the password")
+        // Include an in-progress password and unrelated settings in the same edit.
+        password.tap()
+        password.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 30))
+        password.typeText("in-progress-password")
+        scrollConnectionToTop(app)
+        let name = app.textFields["Name (optional)"]
+        name.tap()
+        name.typeText(" edited")
+        let host = app.textFields["192.168.1.42"]
+        host.tap()
+        host.typeText("-edited")
+        let port = app.textFields["Port"]
+        port.tap()
+        port.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3))
+        port.typeText("2222")
+        app.buttons["Private Key"].tap()
+        app.buttons["Password"].tap()
+        scrollConnectionToTop(app)
+        app.buttons["Herdr Core"].tap()
+        XCTAssertEqual((password.value as? String)?.count, "in-progress-password".count)
+        app.buttons["Save changes"].tap()
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        app.terminate()
+        app.launchEnvironment.removeValue(forKey: "HC_SAVED_MACHINES")
+        app.launchArguments = ["-launchPreference", "connectionSelection"]
+        app.launch()
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        XCTAssertTrue(username.waitForExistence(timeout: 5))
+        XCTAssertEqual(username.value as? String, "alice2")
+        XCTAssertEqual((password.value as? String)?.count, "in-progress-password".count)
+        XCTAssertEqual(name.value as? String, "Settings fixture edited")
+        XCTAssertEqual(host.value as? String, "settings-test.invalid-edited")
+        XCTAssertEqual(port.value as? String, "2222")
+        XCTAssertTrue(app.buttons["Herdr Core"].isSelected)
+    }
+
+    private func scrollConnectionToTop(_ app: XCUIApplication) {
+        let runtime = app.buttons["Herdr Core"]
+        let navigation = app.navigationBars["Connection Settings"]
+        // Stop when the top controls are visible; dragging beyond the top can dismiss the sheet.
+        for _ in 0..<4 {
+            if runtime.exists && runtime.isHittable && runtime.frame.minY >= navigation.frame.maxY { return }
+            app.scrollViews.firstMatch.swipeDown()
+        }
+    }
+}
+
+extension HerdcatsUITests {
     func testAuthMethodTogglePreservesPrivateKeyDraft() {
         let app = XCUIApplication()
         app.launchArguments = ["-connectionSelectionUITest", "-launchPreference", "connectionSelection"]
