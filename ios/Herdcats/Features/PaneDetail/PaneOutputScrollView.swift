@@ -4,7 +4,6 @@ import UIKit
 // MARK: - Pane output scroll view
 
 struct PaneOutputScrollView: View, Equatable {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let output: String
     let selectableText: AttributedString
@@ -39,6 +38,9 @@ struct PaneOutputScrollView: View, Equatable {
     @State private var retainedDockSpace: CGFloat = 0
     @State private var pendingKeyboardSpace: CGFloat = 0
     @State private var hostWindow = HostingWindow()
+    /// The output as it was when you were last at the bottom, for the
+    /// jump button's "new output" dot.
+    @State private var seenAtBottom: TerminalNewOutput.Mark?
 
     init(
         output: String,
@@ -229,18 +231,17 @@ struct PaneOutputScrollView: View, Equatable {
                     let atBottom = anchor.map { viewport[$0].maxY <= viewport.size.height + 8 } ?? true
                     ZStack(alignment: .bottomTrailing) {
                         if !atBottom && !output.isEmpty {
-                            Button {
+                            JumpToLatestButton(
+                                label: "Jump to latest output",
+                                badge: TerminalNewOutput.hasNewLines(seen: seenAtBottom, current: output) ? .dot : .none
+                            ) {
                                 selectionActive = false
                                 onSelectionChange(false)
                                 withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
                                     proxy.scrollTo("pane-output-bottom", anchor: .bottom)
                                 }
-                            } label: {
-                                latestIcon
                             }
-                            .buttonStyle(.plain)
                             .fixedSize()
-                            .accessibilityLabel("Jump to latest output")
                             .accessibilityIdentifier("pane-output-latest")
                             .padding(.trailing, 16)
                             .padding(.bottom, bottomOverlayInset + (reservesMarkAsReadSpace ? 68 : 0) + 8)
@@ -249,6 +250,14 @@ struct PaneOutputScrollView: View, Equatable {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: atBottom)
+                    // Whatever is on screen at the bottom has been seen. Output
+                    // that arrives while you're scrolled up leaves the mark behind.
+                    .onChange(of: atBottom, initial: true) { _, bottom in
+                        if bottom { seenAtBottom = TerminalNewOutput.mark(output) }
+                    }
+                    .onChange(of: output) { _, newOutput in
+                        if atBottom { seenAtBottom = TerminalNewOutput.mark(newOutput) }
+                    }
                 }
             }
         }
@@ -288,19 +297,38 @@ struct PaneOutputScrollView: View, Equatable {
         }
     }
 
-    @ViewBuilder private var latestIcon: some View {
-        let icon = Image(systemName: "arrow.down")
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(Theme.text)
-            .frame(width: 44, height: 44)
-            .contentShape(Circle())
-        if reduceTransparency {
-            icon.background(Theme.cardBackground, in: Circle())
-        } else if #available(iOS 26.0, *) {
-            icon.glassEffect(.regular.interactive(), in: Circle())
-        } else {
-            icon.background(.ultraThinMaterial, in: Circle())
-        }
+}
+
+/// Whether the terminal printed new lines while you were scrolled up.
+enum TerminalNewOutput {
+    /// An agent's live area (spinner, status line, input box) redraws in
+    /// place at the bottom of the screen. Changes there don't count.
+    static let liveRows = 6
+    private static let tailLength = 3
+
+    /// The last few lines above the live area.
+    struct Mark: Equatable {
+        fileprivate let tail: [String]
+    }
+
+    static func mark(_ output: String) -> Mark {
+        Mark(tail: settled(output).suffix(tailLength).map(String.init))
+    }
+
+    /// True when the lines above the live area no longer end where they did
+    /// at `seen`: new lines were printed. The pane keeps only its most
+    /// recent lines, so this compares content rather than counting lines.
+    static func hasNewLines(seen: Mark?, current: String) -> Bool {
+        guard let seen else { return false }
+        let lines = settled(current)
+        guard !seen.tail.isEmpty else { return !lines.isEmpty }
+        return lines.suffix(seen.tail.count).map(String.init) != seen.tail
+    }
+
+    private static func settled(_ output: String) -> ArraySlice<Substring> {
+        var lines = output.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+        while let last = lines.last, last.allSatisfy(\.isWhitespace) { lines.removeLast() }
+        return lines.dropLast(liveRows)
     }
 }
 

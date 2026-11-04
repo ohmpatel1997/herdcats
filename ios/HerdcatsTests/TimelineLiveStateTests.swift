@@ -195,3 +195,45 @@ struct TimelineLiveStateTests {
         #expect(JumpToLatestButton.accessibilityValue(.dot) == "New output")
     }
 }
+
+/// The terminal jump button's "new output" dot.
+@Suite("Terminal new output")
+struct TerminalNewOutputTests {
+    private func screen(_ history: [String], live: [String]) -> String {
+        (history + live).joined(separator: "\n")
+    }
+    private let live = ["", "╭──────────╮", "│ > typing │", "╰──────────╯", "  ✻ Thinking… 3s", "  ? for shortcuts"]
+
+    @Test func terminalDotIgnoresBottomRowRedraws() {
+        let history = (1...20).map { "line \($0)" }
+        let seen = TerminalNewOutput.mark(screen(history, live: live))
+        // The spinner, status line and input box redraw in place.
+        let redrawn = ["", "╭──────────╮", "│ > typing more │", "╰──────────╯", "  ✻ Thinking… 9s", "  esc to interrupt"]
+        #expect(!TerminalNewOutput.hasNewLines(seen: seen, current: screen(history, live: redrawn)))
+        // Trailing blank lines don't shift what counts as the live area.
+        #expect(!TerminalNewOutput.hasNewLines(seen: seen, current: screen(history, live: live) + "\n\n  \n"))
+    }
+
+    @Test func terminalDotShowsForAppendedLines() {
+        let history = (1...20).map { "line \($0)" }
+        let seen = TerminalNewOutput.mark(screen(history, live: live))
+        #expect(TerminalNewOutput.hasNewLines(seen: seen, current: screen(history + ["line 21"], live: live)))
+        // The pane keeps only its newest lines: the oldest scroll away as new
+        // ones arrive, and the count stays the same.
+        let scrolled = Array(history.dropFirst(2)) + ["line 21", "line 22"]
+        #expect(scrolled.count == history.count)
+        #expect(TerminalNewOutput.hasNewLines(seen: seen, current: screen(scrolled, live: live)))
+        // Output too short to have settled lines yet, then some arrive.
+        let short = TerminalNewOutput.mark(screen([], live: live))
+        #expect(!TerminalNewOutput.hasNewLines(seen: short, current: screen([], live: live)))
+        #expect(TerminalNewOutput.hasNewLines(seen: short, current: screen(["first"], live: live)))
+    }
+
+    @Test func terminalDotClearsAtTheBottom() {
+        let current = screen((1...30).map { "line \($0)" }, live: live)
+        // At the bottom, the mark is whatever is on screen, so no dot.
+        #expect(!TerminalNewOutput.hasNewLines(seen: TerminalNewOutput.mark(current), current: current))
+        // Before any mark there is nothing to compare against.
+        #expect(!TerminalNewOutput.hasNewLines(seen: nil, current: current))
+    }
+}
