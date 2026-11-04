@@ -263,6 +263,14 @@ enum ANSIText {
         }
     }
 
+    /// The terminal's AA adjuster for app code colours: returns `foreground`
+    /// unchanged when it already reaches 4.5:1 on `background`, otherwise the
+    /// smallest blend toward black or white that does.
+    static func readableHex(_ foreground: UInt32, on background: UInt32) -> UInt32 {
+        let adjusted = RGBA(hex: foreground).readable(on: RGBA(hex: background))
+        return adjusted.hexValue
+    }
+
     private struct RGBA: Equatable {
         var r: Int
         var g: Int
@@ -278,6 +286,10 @@ enum ANSIText {
 
         var hex: String {
             String(format: "#%02x%02x%02x", clamped(r), clamped(g), clamped(b))
+        }
+
+        var hexValue: UInt32 {
+            UInt32(clamped(r)) << 16 | UInt32(clamped(g)) << 8 | UInt32(clamped(b))
         }
 
         init(r: Int, g: Int, b: Int) {

@@ -294,6 +294,16 @@ enum Theme {
         ("userBubble", 0x435C54, Palette.mint200, 1, 1)
     ]
 
+    /// A token's colour in one palette and appearance, outside SwiftUI's
+    /// trait resolution. Moonlit's alpha is kept, so callers blend it.
+    static func uiColor(_ token: String, palette: AppPalette, dark: Bool) -> UIColor {
+        guard let row = moonlitTokens.first(where: { $0.name == token }) else {
+            return paletteColor(token, palette: palette, dark: dark, fallback: dark ? Palette.paper50 : Palette.night950)
+        }
+        return paletteColor(token, palette: palette, dark: dark,
+                            fallback: dark ? row.night : row.day, alpha: dark ? row.nightAlpha : row.dayAlpha)
+    }
+
     /// Stable Color values preserve equality and avoid creating UIKit providers
     /// for every view update. The cache has no mutable shared state.
     private static let colors: [String: Color] = {

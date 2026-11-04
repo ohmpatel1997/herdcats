@@ -54,6 +54,17 @@ enum TimelineMarkdown {
         return attributed
     }
 
+    /// Code as it is shown and copied: bidi controls removed, the same rule
+    /// `sanitized` applies to other text, so a right-to-left override can't
+    /// make code read differently from what it does. Reports whether any
+    /// were removed, so the view can say so.
+    static func displayCode(_ code: String) -> (text: String, removedHidden: Bool) {
+        guard code.unicodeScalars.contains(where: { $0.properties.isBidiControl }) else { return (code, false) }
+        var scalars = String.UnicodeScalarView()
+        scalars.append(contentsOf: code.unicodeScalars.filter { !$0.properties.isBidiControl })
+        return (String(scalars), true)
+    }
+
     /// Your own messages: the same sanitizing, then an underline on every
     /// link that survives it. Inside your bubble links take the text colour,
     /// which is readable on the bubble in every palette, so the underline is
@@ -144,6 +155,8 @@ struct AgentTimelineEntryView: View {
     let entry: AgentTimelineEntry
     let files: TimelineContentFiles
     let scope: String
+    /// Parsed agent messages, shared across the Timeline's rows.
+    let blockCache: TimelineBlockCache
     let loadContent: @MainActor (String) async throws -> Data
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.openURL) private var openURL
@@ -229,16 +242,24 @@ struct AgentTimelineEntryView: View {
 
     // MARK: The agent's messages
 
-    /// Open text across the column, with no fill.
+    /// Open text across the column, with no fill. Headings, lists, quotes
+    /// and code render as blocks; a plain message stays one text element.
     private var agentLayout: some View {
         VStack(alignment: .leading, spacing: 10) {
             if entry.kind == "image" {
                 imageContent
             } else {
-                Text(markdown).font(.jost(.body)).lineSpacing(4)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("timeline-message-\(entry.id)")
+                let blocks = blockCache.blocks(for: entry)
+                if let text = TimelineMessageBlocks.singleParagraph(blocks) {
+                    Text(text).font(.jost(.body)).lineSpacing(4)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("timeline-message-\(entry.id)")
+                } else {
+                    TimelineBlocksView(blocks: blocks, entryID: entry.id)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("timeline-message-\(entry.id)")
+                }
             }
             if entry.truncated {
                 Text("Preview shortened.")
@@ -315,7 +336,6 @@ struct AgentTimelineEntryView: View {
             if !Task.isCancelled { imageError = "This image could not be displayed. Try loading it again." }
         }
     }
-    private var markdown: AttributedString { Self.sanitizedMarkdown(entry.text) }
     private var bubbleMarkdown: AttributedString { TimelineMarkdown.bubbleStyled(entry.text) }
     static func sanitizedMarkdown(_ text: String) -> AttributedString { TimelineMarkdown.sanitized(text) }
 }

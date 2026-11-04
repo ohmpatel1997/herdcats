@@ -122,9 +122,9 @@ struct TimelineDiffCard: View {
                     .frame(maxHeight: 260)
             }
             .padding(14).foregroundStyle(Theme.text)
-            .background(Theme.cardBackground)
+            .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.sm))
             .overlay {
-                Rectangle().strokeBorder(Theme.hairline, lineWidth: 1)
+                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.sm).strokeBorder(Theme.hairline, lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -173,53 +173,59 @@ struct TimelineDiffHeading: View {
     }
 }
 
+/// Diff lines on the card colour. Changed lines add a 13% wash of their
+/// status colour, and every foreground is adjusted to 4.5:1 on that line's
+/// own background.
 struct TimelineDiffCode: View {
     let lines: [TimelineDiffLine]
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
+        let dark = colorScheme == .dark
+        let palette = TimelineCodeColors.palette(dark: dark)
+        let styles = [TimelineCodeColors.Line.context, .added, .removed].map { line in
+            (line, TimelineCodeColors.colors(palette: palette, dark: dark, line: line),
+             TimelineCodeColors.background(line, palette: palette, dark: dark))
+        }
         ScrollView(.horizontal) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(lines) { line in
+                    let style = styles[Self.styleIndex(line.kind)]
                     HStack(alignment: .top, spacing: 8) {
                         Text(line.kind == .added ? "+" : line.kind == .removed ? "−" : " ")
-                            .frame(width: 14).foregroundStyle(tint(line))
-                        Text(highlight(line.text, omitted: line.kind == .omitted))
+                            .frame(width: 14)
+                            .foregroundStyle(Color(codeHex: Self.markerColor(line.kind, style.1)))
+                        Text(TimelineCodeHighlighter.highlight(
+                            TimelineMarkdown.displayCode(line.text).text, colors: style.1,
+                            plain: line.kind == .omitted ? style.1.comment : nil))
                             .fixedSize(horizontal: true, vertical: true)
                         Spacer(minLength: 8)
                     }
                     .font(.system(.caption, design: .monospaced))
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(tint(line).opacity(line.kind == .context ? 0 : 0.13))
+                    .background(line.kind == .added || line.kind == .removed ? Color(codeHex: style.2) : .clear)
                 }
             }
         }
-        .background(Theme.subtleFill)
-        .clipped()
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.sm))
     }
-    private func tint(_ line: TimelineDiffLine) -> Color {
-        switch line.kind {
-        case .added: Theme.successGreen
-        case .removed: Theme.destructive
-        default: Theme.textMuted
-        }
-    }
-    private static let highlightRules: [(NSRegularExpression, UIColor)] = [
-        (try! NSRegularExpression(pattern: #"\b(let|var|const|func|function|return|if|else|for|while|class|struct|enum|import|from|true|false|null|nil|async|await|try|throw|public|private|static)\b"#), .systemPurple),
-        (try! NSRegularExpression(pattern: #"\b[0-9]+(?:\.[0-9]+)?\b"#), .systemOrange),
-        (try! NSRegularExpression(pattern: #""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"#), .systemGreen),
-        (try! NSRegularExpression(pattern: #"//.*$"#), .secondaryLabel)
-    ]
 
-    private func highlight(_ text: String, omitted: Bool) -> AttributedString {
-        let result = NSMutableAttributedString(string: text, attributes: [.foregroundColor: UIColor(omitted ? Theme.textMuted : Theme.text)])
-        guard !omitted else { return AttributedString(result) }
-        let textRange = NSRange(text.startIndex..., in: text)
-        for (expression, color) in Self.highlightRules {
-            for match in expression.matches(in: text, range: textRange) {
-                result.addAttribute(.foregroundColor, value: color, range: match.range)
-            }
+    private static func styleIndex(_ kind: TimelineDiffLine.Kind) -> Int {
+        switch kind {
+        case .added: 1
+        case .removed: 2
+        default: 0
         }
-        return AttributedString(result)
+    }
+
+    private static func markerColor(_ kind: TimelineDiffLine.Kind, _ colors: TimelineCodeColors) -> UInt32 {
+        switch kind {
+        case .added: colors.added
+        case .removed: colors.removed
+        default: colors.comment
+        }
     }
 }
 

@@ -837,6 +837,48 @@ final class AgentTimelineUITests: XCTestCase {
         app.terminate()
     }
 
+    func testRichMarkdownShowsBlocksAndCopiesCode() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-rich-markdown", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(app)
+        let scroll = app.scrollViews["agent-timeline-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        // Headings and list items render without their markdown markers.
+        let heading = app.staticTexts["Host key check"]
+        for _ in 0..<4 where !(heading.exists && heading.isHittable) { scroll.swipeDown() }
+        XCTAssertTrue(heading.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["## Host key check"].exists)
+        XCTAssertTrue(app.staticTexts["First connection: you confirm the fingerprint."].exists)
+        XCTAssertTrue(app.staticTexts["Compare the fingerprints."].exists)
+        let blocks = XCTAttachment(screenshot: app.screenshot())
+        blocks.name = "Timeline headings and lists"
+        blocks.lifetime = .keepAlways
+        add(blocks)
+        // The code block: a Copy button, and a note that hidden characters went.
+        let copy = app.buttons["timeline-code-copy-message:rich-5"]
+        for _ in 0..<4 where !(copy.exists && copy.isHittable) { scroll.swipeUp() }
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Hidden text-direction characters were removed."].exists)
+        let code = XCTAttachment(screenshot: app.screenshot())
+        code.name = "Timeline code block"
+        code.lifetime = .keepAlways
+        add(code)
+        copy.tap()
+        let copied = NSPredicate { _, _ in copy.label == "Copied" }
+        expectation(for: copied, evaluatedWith: nil)
+        waitForExpectations(timeout: 3)
+        // A long block shows 40 lines inline and the rest in a sheet.
+        let showAll = app.buttons["timeline-code-all-message:log-1"]
+        for _ in 0..<6 where !(showAll.exists && showAll.isHittable) { scroll.swipeUp() }
+        XCTAssertTrue(showAll.waitForExistence(timeout: 5))
+        XCTAssertEqual(showAll.label, "Show all 60 lines")
+        showAll.tap()
+        XCTAssertTrue(app.navigationBars["text"].waitForExistence(timeout: 5))
+        app.buttons["timeline-code-close"].tap()
+        XCTAssertTrue(showAll.waitForExistence(timeout: 5))
+        app.terminate()
+    }
+
     func testSpeakerRowsNameEachTurnAndYourMessagesSayYou() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-conversation", "-hc.light", "-paneShowComposeByDefault", "NO"]

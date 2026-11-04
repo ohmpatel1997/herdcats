@@ -47,6 +47,7 @@ struct AgentTimelineView: View {
     @State var helperMayHaveInstalled = false
     @State var retry = 0
     @State private var contentFiles = TimelineContentFiles()
+    @State private var blockCache = TimelineBlockCache()
     @State var historyLoader = TimelineHistoryLoader()
     @State var isPaging = false
     @State var pageError: String?
@@ -133,7 +134,7 @@ struct AgentTimelineView: View {
                 TimelineActivityView(entries: item.entries,
                     loadContent: { reference in try await loadContent(reference, scope: scope) })
             } else if let entry = item.entries.first {
-                AgentTimelineEntryView(entry: entry, files: contentFiles, scope: scope,
+                AgentTimelineEntryView(entry: entry, files: contentFiles, scope: scope, blockCache: blockCache,
                     loadContent: { reference in try await loadContent(reference, scope: scope) })
             }
         }
@@ -537,6 +538,7 @@ struct AgentTimelineView: View {
             entryFrames.frames = [:]
             historyScrollAnchor = nil
             contentFiles.reset()
+            blockCache.reset()
         }
         .onChange(of: taskKey) { _, _ in historyLoader.cancel(); updateTimelineSheet() }
         .onDisappear {
@@ -544,7 +546,7 @@ struct AgentTimelineView: View {
             approvalResponse.reset()
             questionResponse.reset()
             updateTimelineSheet()
-            historyLoader.cancel(); cancelHelperInstallation(); contentFiles.reset()
+            historyLoader.cancel(); cancelHelperInstallation(); contentFiles.reset(); blockCache.reset()
         }
         .sheet(item: timelineSheetBinding, onDismiss: timelineSheetDismissed) { sheet in timelineSheet(sheet) }
     }

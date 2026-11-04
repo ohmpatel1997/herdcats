@@ -318,6 +318,46 @@
                      "text": "Fixed. The fingerprint now wraps onto a second line instead of being cut off.", "truncated": false],
                 ]
             }
+            if ScreenshotFixtures.screen == "timeline-rich-markdown" {
+                // Every block kind, a code line hiding a right-to-left override,
+                // and a code block long enough to need "Show all".
+                let explanation = """
+                    ## Host key check
+
+                    The app compares the server's key with the one it saved:
+
+                    - **First connection:** you confirm the fingerprint.
+                    - **Same key:** it connects.
+                    - **Changed key:** it stops and warns you.
+
+                    1. Read the saved key.
+                    2. Compare the fingerprints.
+                    3. Ask before replacing it.
+
+                    > A changed key can mean the server was reinstalled, or that someone is in the middle.
+
+                    ```swift
+                    func verify(_ key: HostKey) -> Bool {
+                        // Compare against the stored fingerprint
+                        let expected = store.fingerprint(for: host)
+                        let label = "SHA256:\u{202E}cba"
+                        return key.fingerprint == expected && retries < 3
+                    }
+                    ```
+
+                    ---
+
+                    See [the guide](https://example.com/host-keys) for details.
+                    """
+                let log = (1...60).map { "line \($0): connection check passed in \($0 * 12) ms" }.joined(separator: "\n")
+                entries = [
+                    ["id": "message:user", "kind": "message", "role": "user",
+                     "text": "How does the host key check work?", "truncated": false],
+                    ["id": "message:rich", "kind": "message", "role": "assistant", "text": explanation, "truncated": false],
+                    ["id": "message:log", "kind": "message", "role": "assistant",
+                     "text": "Here is the full test log:\n\n```text\n\(log)\n```", "truncated": false],
+                ]
+            }
             if ScreenshotFixtures.screen == "timeline-rich-content" {
                 entries += [
                     ["id":"content:image", "kind":"image", "role":"user", "text":"Image", "truncated":false, "content_ref":imageRef, "record_refs":[imageRef]],
