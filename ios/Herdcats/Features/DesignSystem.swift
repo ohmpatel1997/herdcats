@@ -281,6 +281,9 @@ enum Theme {
         ("raised", 0x446670, 0xC5DCCF, 1, 1),
         // Key caps and badges. The same as raised, except in Solarized Dark.
         ("keyCap", 0x446670, 0xC5DCCF, 1, 1),
+        // A list row open in the detail column: the accent at 16% over the
+        // canvas (10% in Solarized Dark, so its text stays at 4.5:1 or more).
+        ("openRow", Palette.mint200, Palette.night800, 0.16, 0.16),
         ("text", Palette.paper50, Palette.night950, 1, 1),
         ("muted", Palette.paper50, Palette.night950, 0.72, 0.72),
         ("warm", Palette.lacquer900, 0x8A3324, 1, 1),
@@ -334,7 +337,7 @@ enum Theme {
         let colors = palette.colors
         let key: String
         switch token {
-        case "accent", "accentFill": key = "mauve"
+        case "accent", "accentFill", "openRow": key = "mauve"
         case "background", "field": key = "mantle"
         case "card", "sky": key = "base"
         case "border", "raised", "keyCap": key = "surface0"
@@ -376,7 +379,7 @@ enum Theme {
         case "keyCap": hex = dark ? 0x002B36 : 0xEEE8D5
         case "text": hex = dark ? 0x93A1A1 : 0x073642
         case "muted": hex = dark ? 0x93A1A1 : 0x586E75
-        case "accent", "accentFill": hex = dark ? 0x4BA3DF : 0x1D6FA5
+        case "accent", "accentFill", "openRow": hex = dark ? 0x4BA3DF : 0x1D6FA5
         case "idle": hex = dark ? 0x3CB5AB : 0x167C75
         case "done": hex = dark ? 0x9AAA22 : 0x627200
         case "working": hex = dark ? 0xC69A18 : 0x866500
@@ -386,7 +389,16 @@ enum Theme {
         case "onPrimary": hex = dark ? 0x002B36 : 0xFDF6E3
         default: hex = dark ? 0x93A1A1 : 0x586E75
         }
-        let effectiveAlpha = token == "muted" ? 1 : (!dark && (token == "addition" || token == "deletion") ? 0.12 : alpha)
+        let effectiveAlpha: CGFloat
+        if token == "muted" {
+            effectiveAlpha = 1
+        } else if !dark && (token == "addition" || token == "deletion") {
+            effectiveAlpha = 0.12
+        } else if dark && token == "openRow" {
+            effectiveAlpha = 0.10
+        } else {
+            effectiveAlpha = alpha
+        }
         return UIColor(hex: hex, alpha: effectiveAlpha)
     }
 
@@ -406,6 +418,8 @@ enum Theme {
     /// Fill for key caps and badges: text on it is at least 5.17:1 in every
     /// palette. It equals `subtleFill` except in Solarized Dark.
     static var keyCap: Color { color("keyCap") }
+    /// Tint behind a list row that is open in the detail column.
+    static var openRowTint: Color { color("openRow") }
     static var rowBackground: Color { cardBackground }
     static var selectedFill: Color { subtleFill }
     static var border: Color { hairline }

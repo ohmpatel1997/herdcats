@@ -275,10 +275,8 @@ struct PaneSwitcher: View {
                                     HStack(spacing: 6) {
                                         if let agent = pane.agent {
                                             AgentBadge(kind: agent)
-                                                .opacity(0.7)
                                         } else {
                                             CommandLineBadge()
-                                                .opacity(0.7)
                                         }
                                         Spacer(minLength: 0)
                                         if let updated = lastUpdatedByPaneID[pane.paneId] {

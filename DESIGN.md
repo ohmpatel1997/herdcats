@@ -170,6 +170,12 @@ img.pixel, canvas.pixel {
 - Pressed: the cap drops 1pt and its fill goes halfway to the card; the label stays opaque (at least 5.2:1).
 - Disabled: 45% opacity, with the reason shown nearby.
 
+### Lists and badges (iOS)
+- A list row's status dot keeps its system colour, and attention states get a word beside it ("Blocked", "Working", "Done") in `text` caption semibold, before the time. Idle has no word.
+- Counts are written as words: "1 tab · 2 panes · 1 agent", or "no agents".
+- An agent row's second line names the agent before its folder: "Claude · ~/Projects/herdcats". Agents use the Timeline's names, never a raw identifier such as "antigravity_cli".
+- Agent badges are `keyCap` capsules with the name in `text`; the brand colour is on the icon only. They are never dimmed.
+
 ### Circular emblem
 - Mascot icon inside a circle with a 3px `mint-200` stroke and a transparent fill.
 

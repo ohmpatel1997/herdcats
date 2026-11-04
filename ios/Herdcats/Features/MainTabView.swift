@@ -539,6 +539,27 @@ struct AgentListItem: Identifiable, Hashable {
 
 // MARK: - Agent list row
 
+/// The line under an agent's title: its name, then its folder, for example
+/// "Claude · ~/Projects/herdcats". An agent kind the app doesn't know shows
+/// the folder only, rather than a raw identifier.
+enum AgentRowSubtitle {
+    static func text(kind: String, path: String) -> String {
+        var parts: [String] = []
+        if AgentKindVisual.isKnown(kind) { parts.append(AgentKindVisual.displayName(for: kind)) }
+        if !path.isEmpty { parts.append(path) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// What VoiceOver reads: the agent's name, even an unfamiliar kind's
+    /// (capitalised), then the folder, separated by a pause.
+    static func accessibilityText(kind: String, path: String) -> String {
+        var parts: [String] = []
+        if !kind.isEmpty { parts.append(AgentKindVisual.displayName(for: kind)) }
+        if !path.isEmpty { parts.append(path) }
+        return parts.joined(separator: ", ")
+    }
+}
+
 struct AgentListRow: View {
     @Environment(\.paneRowBadges) private var paneBadges
     let item: AgentListItem
@@ -553,7 +574,7 @@ struct AgentListRow: View {
             StatusDot(status: item.status)
                 .accessibilityLabel(item.status.label)
             VStack(alignment: .leading, spacing: QuietListMetrics.lineSpacing) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                ListRowTitleLine {
                     Text(item.title)
                         .font(.appHeadlineSm)
                         .lineLimit(1)
@@ -563,23 +584,25 @@ struct AgentListRow: View {
                             .foregroundStyle(Theme.accent)
                             .accessibilityLabel("Focused")
                     }
-                    Spacer(minLength: 8)
+                } trailing: {
                     ForEach(paneBadges, id: \.slot) { PaneSlotTag(badge: $0) }
+                    StatusTag(status: item.status)
                     RowTimestamp(date: lastUpdated)
                 }
-                .alignmentGuide(.listTitleCenter) { $0[VerticalAlignment.center] }
                 HStack(spacing: 6) {
                     AgentKindIcon(kind: agent.agent, size: 13)
-                        .accessibilityElement()
-                        .accessibilityLabel(AgentKindVisual.displayName(for: agent.agent))
-                    if !agent.shortCwd.isEmpty {
-                        Text(agent.shortCwd)
+                    let subtitle = AgentRowSubtitle.text(kind: agent.agent, path: agent.shortCwd)
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
                             .font(.caption.monospaced())
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
                 }
                 .foregroundStyle(.secondary)
+                // Read as "Claude, ~/Projects/herdcats", never "middle dot".
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(AgentRowSubtitle.accessibilityText(kind: agent.agent, path: agent.shortCwd))
             }
         }
         .padding(.vertical, QuietListMetrics.rowVerticalPadding)

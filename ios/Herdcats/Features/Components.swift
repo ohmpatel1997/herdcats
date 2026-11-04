@@ -16,6 +16,17 @@ extension AgentStatus {
         case .idle: .green
         }
     }
+
+    /// A word shown beside the dot in lists, so status doesn't rest on
+    /// colour alone. Only states that may need you get one.
+    var rowTag: String? {
+        switch self {
+        case .blocked: "Blocked"
+        case .working: "Working"
+        case .done: "Done"
+        case .idle, .unknown: nil
+        }
+    }
 }
 
 /// Per-agent-kind branding for known agents, with graceful fallbacks.
@@ -26,7 +37,7 @@ enum AgentKindVisual {
         case "codex": Color(red: 0.09, green: 0.64, blue: 0.51) // OpenAI green
         case "claude": Color(red: 0.85, green: 0.47, blue: 0.34) // Anthropic Claude
         case "pi": Color(red: 0.94, green: 0.56, blue: 0.51) // pi.dev coral
-        case "agy", "agy-claude", "gemini": Color(red: 0.56, green: 0.46, blue: 0.70) // Gemini purple
+        case "agy", "agy-claude", "antigravity_cli", "gemini": Color(red: 0.56, green: 0.46, blue: 0.70) // Gemini purple
         case "zai": Color(red: 0.12, green: 0.39, blue: 0.93) // Z.AI blue
         case "alibaba": Color(red: 0.95, green: 0.45, blue: 0.15)
         case "copilot": Color(red: 0.45, green: 0.55, blue: 0.95)
@@ -44,7 +55,7 @@ enum AgentKindVisual {
         case "codex": "AgentCodex"
         case "claude": "AgentClaude"
         case "pi": "AgentPi"
-        case "agy", "agy-claude", "gemini": "AgentGemini"
+        case "agy", "agy-claude", "antigravity_cli", "gemini": "AgentGemini"
         case "zai": "AgentZai"
         default: nil
         }
@@ -61,7 +72,7 @@ enum AgentKindVisual {
         case "codex": "sparkles"
         case "claude": "terminal.fill"
         case "pi": "function"
-        case "agy", "agy-claude", "gemini": "diamond.fill"
+        case "agy", "agy-claude", "antigravity_cli", "gemini": "diamond.fill"
         case "zai": "flame.fill"
         case "alibaba": "shippingbox.fill"
         case "copilot": "chevron.left.forwardslash.chevron.right"
@@ -72,8 +83,19 @@ enum AgentKindVisual {
         }
     }
 
+    /// "Claude", "Codex", "Agy", "Pi", "Cursor" for the agents the Timeline
+    /// knows (the same names it uses), so a raw identity such as
+    /// "antigravity_cli" never shows. Other kinds are capitalised.
     static func displayName(for kind: String) -> String {
-        kind.prefix(1).uppercased() + kind.dropFirst()
+        if TimelineAgentAvailability.supports(agent: kind) {
+            return TimelineAgentAvailability.displayName(for: kind)
+        }
+        return kind.prefix(1).uppercased() + kind.dropFirst()
+    }
+
+    /// True for agent kinds the app has a name and icon for.
+    static func isKnown(_ kind: String) -> Bool {
+        assetName(for: kind) != nil || symbol(for: kind) != "cpu"
     }
 }
 
@@ -183,45 +205,41 @@ struct StatusPill: View {
 
 // MARK: - Agent badge
 
+/// The agent's name on a `keyCap` capsule. Text on `keyCap` is at least
+/// 5.17:1 in every palette, whatever card or selected fill is behind it; the
+/// brand colour stays on the icon only.
 struct AgentBadge: View {
     let kind: String
-
-    private var tint: Color { AgentKindVisual.color(for: kind) }
 
     var body: some View {
         HStack(spacing: 4) {
             AgentKindIcon(kind: kind, size: 10)
             Text(AgentKindVisual.displayName(for: kind))
                 .font(.jost(10, weight: .bold))
-                .foregroundStyle(tint)
+                .foregroundStyle(Theme.text)
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
-        .background(
-            Capsule().fill(tint.opacity(0.15))
-        )
+        .background(Capsule().fill(Theme.keyCap))
     }
 }
 
-/// Badge for a plain shell pane with no recognized agent.
+/// Badge for a plain shell pane with no recognized agent, styled like
+/// `AgentBadge`.
 struct CommandLineBadge: View {
-    private var tint: Color { .secondary }
-
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "terminal")
                 .font(.jost(10, weight: .bold))
-                .foregroundStyle(tint)
+                .foregroundStyle(Theme.textMuted)
                 .accessibilityHidden(true)
             Text("Command line")
                 .font(.jost(10, weight: .bold))
-                .foregroundStyle(tint)
+                .foregroundStyle(Theme.text)
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
-        .background(
-            Capsule().fill(Theme.subtleFill)
-        )
+        .background(Capsule().fill(Theme.keyCap))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Command line")
     }
@@ -309,24 +327,92 @@ struct RowTimestamp: View {
     }
 }
 
-// MARK: - Stat chip
+// MARK: - List row title line
 
-struct StatChip: View {
-    let icon: String
-    let value: String
-    let caption: String
+enum ListRowLayout {
+    /// On one line, the title keeps at least this much width; if the status
+    /// word and time would leave it less, they move under the title.
+    static let titleMinimumWidth: CGFloat = 120
+
+    /// At accessibility text sizes the status word and time always go under
+    /// the title, so a large title stays readable.
+    static func putsStatusBelowTitle(at size: DynamicTypeSize) -> Bool {
+        size.isAccessibilitySize
+    }
+}
+
+/// A list row's first line: the title, then pane tags, the status word and
+/// the time. When those don't fit beside a readable title, or text is at an
+/// accessibility size, they move to their own line under the title.
+struct ListRowTitleLine<Title: View, Trailing: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let title: Title
+    private let trailing: Trailing
+
+    init(@ViewBuilder title: () -> Title, @ViewBuilder trailing: () -> Trailing) {
+        self.title = title()
+        self.trailing = trailing()
+    }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.jost(10, weight: .semibold))
-            Text(value)
-                .font(.jost(13, weight: .medium))
-                .monospacedDigit()
+        if ListRowLayout.putsStatusBelowTitle(at: dynamicTypeSize) {
+            stacked
+        } else {
+            ViewThatFits(in: .horizontal) {
+                sideBySide
+                stacked
+            }
         }
-        .foregroundStyle(.secondary)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(caption): \(value)")
+    }
+
+    private var titleCluster: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) { title }
+            .alignmentGuide(.listTitleCenter) { $0[VerticalAlignment.center] }
+    }
+
+    private var trailingCluster: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) { trailing }
+    }
+
+    private var sideBySide: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            titleCluster
+                .frame(minWidth: ListRowLayout.titleMinimumWidth, idealWidth: ListRowLayout.titleMinimumWidth,
+                       maxWidth: .infinity, alignment: .leading)
+            trailingCluster
+        }
+    }
+
+    private var stacked: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            titleCluster
+                .frame(maxWidth: .infinity, alignment: .leading)
+            // At the largest sizes even this line can be wider than the row
+            // ("Working" beside "Wednesday"), so its items may wrap.
+            ViewThatFits(in: .horizontal) {
+                trailingCluster
+                VStack(alignment: .leading, spacing: 2) { trailing }
+            }
+        }
+    }
+}
+
+// MARK: - Status tag
+
+/// The status word beside a list row's dot ("Blocked", "Working", "Done").
+/// Hidden from VoiceOver, because the dot already says the status.
+struct StatusTag: View {
+    let status: AgentStatus
+
+    var body: some View {
+        if let tag = status.rowTag {
+            Text(tag)
+                .font(.jost(.caption, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .lineLimit(1)
+                .fixedSize()
+                .accessibilityHidden(true)
+        }
     }
 }
 

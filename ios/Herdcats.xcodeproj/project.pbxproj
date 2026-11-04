@@ -60,6 +60,7 @@
 		4F60BAF0321042EAE770DE08 /* AgentBridgeLiveSSHTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B56912BC83A7EAE644E879C /* AgentBridgeLiveSSHTests.swift */; };
 		50A0DEA7145EF0ED649928E9 /* AppModel+Connection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F08939634B4BDB715233641 /* AppModel+Connection.swift */; };
 		526E87D46A23D96312753E5D /* ActiveMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D44C971EA70DF347A115BE73 /* ActiveMachine.swift */; };
+		540E23ED4F33AF714AB1FCF5 /* ListRowPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFAE309D300541AD112682DF /* ListRowPresentationTests.swift */; };
 		5465CDF25126AD63373F6C5B /* SpacesModel+UsageAndRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = E348D6EA1DECCC4C70AAD35E /* SpacesModel+UsageAndRefresh.swift */; };
 		55FFDFEAD0D4F0F1FB6FE74E /* CoreWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461647873FA54DF5C9603AE0 /* CoreWireTests.swift */; };
 		5C9D102CC251986AED9D5DB6 /* HerdcatsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D6AD0D245B62B4BA7FEEFA2 /* HerdcatsUITests.swift */; };
@@ -361,6 +362,7 @@
 		F996691B62CAF36EEBB12D8A /* PaneSessionView+LiveAndActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PaneSessionView+LiveAndActions.swift"; sourceTree = "<group>"; };
 		FA18C20C79CD1BC62B36405C /* AgentTimelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTimelineTests.swift; sourceTree = "<group>"; };
 		FC0B75ADD32735D5BC85B14E /* PaneLiveModifierComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneLiveModifierComposer.swift; sourceTree = "<group>"; };
+		FFAE309D300541AD112682DF /* ListRowPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListRowPresentationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -630,6 +632,7 @@
 				83C234563294328F2C25F32D /* HerdcatsTests+SpacePaneTree.swift */,
 				6DC9AC7B0C50E2B028D486ED /* HerdcatsTests+TimeoutAndMachines.swift */,
 				D7130B92FE71B81E8E9BC8B0 /* HerdcatsTests+WorktreeAndRemoteCommands.swift */,
+				FFAE309D300541AD112682DF /* ListRowPresentationTests.swift */,
 				D59976F22DF54B5D3736EEF2 /* PaneInputSurfaceTests.swift */,
 				2AFE5DFC694EBCD2A7C697D9 /* PaneLiveInputTests.swift */,
 				217943F1848BADFC038A2932 /* PaneLiveModifierComposerTests.swift */,
@@ -965,6 +968,7 @@
 				0EF9EC595D3477407A5B0B7C /* HerdcatsTests+TimeoutAndMachines.swift in Sources */,
 				9B2967A116EC48828EF7B1DE /* HerdcatsTests+WorktreeAndRemoteCommands.swift in Sources */,
 				FE4876BF2B8AA2FC6A56B7EE /* HerdcatsTests.swift in Sources */,
+				540E23ED4F33AF714AB1FCF5 /* ListRowPresentationTests.swift in Sources */,
 				2467A07AC426720BEE06D546 /* PaneInputSurfaceTests.swift in Sources */,
 				2368457265E142AA65446CD5 /* PaneLiveInputTests.swift in Sources */,
 				D82A1C06AA4BDA852E848F59 /* PaneLiveModifierComposerTests.swift in Sources */,

@@ -23,6 +23,30 @@ struct PendingSpaceRow: View {
     }
 }
 
+/// A space's counts in words: "1 tab · 2 panes · 1 agent", or "no agents".
+enum SpaceRowSummary {
+    static func parts(tabs: Int, panes: Int, agents: Int) -> [String] {
+        [count(tabs, "tab"), count(panes, "pane"), count(agents, "agent")]
+    }
+
+    static func text(tabs: Int, panes: Int, agents: Int) -> String {
+        parts(tabs: tabs, panes: panes, agents: agents).joined(separator: " · ")
+    }
+
+    /// The same words, with pauses VoiceOver reads naturally.
+    static func accessibilityText(tabs: Int, panes: Int, agents: Int) -> String {
+        parts(tabs: tabs, panes: panes, agents: agents).joined(separator: ", ")
+    }
+
+    private static func count(_ value: Int, _ noun: String) -> String {
+        switch value {
+        case 0: "no \(noun)s"
+        case 1: "1 \(noun)"
+        default: "\(value) \(noun)s"
+        }
+    }
+}
+
 /// A space group's root as a chat-style row: status column, title with the
 /// last-activity time pinned top-right, and a line of tab/pane/agent counts.
 struct SpaceRow: View {
@@ -40,23 +64,26 @@ struct SpaceRow: View {
             StatusDot(status: group.root.status)
                 .accessibilityLabel(group.root.status.label)
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                ListRowTitleLine {
                     Text(group.root.label)
                         .font(.appHeadlineSm)
                         .lineLimit(1)
                     if workspace.focused {
                         FocusedMark()
                     }
-                    Spacer(minLength: 8)
+                } trailing: {
                     ForEach(paneBadges, id: \.slot) { PaneSlotTag(badge: $0) }
+                    StatusTag(status: group.root.status)
                     RowTimestamp(date: lastUpdated)
                 }
-                .alignmentGuide(.listTitleCenter) { $0[VerticalAlignment.center] }
-                HStack(spacing: 12) {
-                    StatChip(icon: "rectangle.split.3x1", value: "\(workspace.tabCount)", caption: "tabs")
-                    StatChip(icon: "rectangle.split.2x2", value: "\(workspace.paneCount)", caption: "panes")
-                    StatChip(icon: "sparkles", value: "\(group.root.agents.count)", caption: "agents")
-                }
+                // The only place the counts appear, so it scales and stays readable.
+                Text(SpaceRowSummary.text(tabs: workspace.tabCount, panes: workspace.paneCount,
+                                          agents: group.root.agents.count))
+                    .font(.jost(.footnote, weight: .medium))
+                    .foregroundStyle(Theme.textMuted)
+                    .lineLimit(1)
+                    .accessibilityLabel(SpaceRowSummary.accessibilityText(
+                        tabs: workspace.tabCount, panes: workspace.paneCount, agents: group.root.agents.count))
             }
         }
         .padding(.vertical, 11)
@@ -77,10 +104,10 @@ struct WorktreeRow: View {
     var lastUpdated: Date? = nil
 
     var body: some View {
-        HStack(alignment: .center, spacing: QuietListMetrics.columnSpacing) {
+        HStack(alignment: .listTitleCenter, spacing: QuietListMetrics.columnSpacing) {
             StatusDot(status: space.status)
                 .accessibilityLabel(space.status.label)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            ListRowTitleLine {
                 Image(systemName: "arrow.triangle.branch")
                     .font(.jost(11, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -90,7 +117,8 @@ struct WorktreeRow: View {
                 if space.workspace.focused {
                     FocusedMark()
                 }
-                Spacer(minLength: 8)
+            } trailing: {
+                StatusTag(status: space.status)
                 RowTimestamp(date: lastUpdated)
             }
         }
@@ -147,7 +175,7 @@ struct RowHighlight: View {
         if isSelected {
             // Open in the detail column: a deeper accent tint, without an outline.
             shape
-                .fill(Theme.accent.opacity(0.16))
+                .fill(Theme.openRowTint)
                 .padding(.horizontal, -8)
         } else if isActive {
             shape
