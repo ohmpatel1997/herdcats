@@ -48,7 +48,9 @@ struct TimelineActivityView: View {
                 .padding(.vertical, 10)
                 .frame(minHeight: 44)
                 .background(alignment: .leading) {
-                    Capsule().fill(Theme.subtleFill).frame(width: 2)
+                    // Muted text at a third: faint, but visible in every palette,
+                    // including Solarized Light, where the raised fill is the canvas.
+                    Capsule().fill(Theme.textMuted.opacity(0.35)).frame(width: 2)
                 }
                 .contentShape(Rectangle())
             }

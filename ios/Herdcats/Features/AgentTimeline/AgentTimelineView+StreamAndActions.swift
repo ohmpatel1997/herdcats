@@ -304,15 +304,15 @@ extension AgentTimelineView {
         _ page: AgentBridgePayload, owner: UUID, generation: UInt64
     ) throws {
         // Capture at response time so scrolling while a page is in flight is respected.
-        let visible = entryFrames.frames
-            .filter { $0.value.maxY > topOverlayInset && $0.value.minY < viewportHeight - bottomOverlayInset - approvalInset }
-            .min { $0.value.minY < $1.value.minY }
+        let visible = TimelineHistoryAnchor.pick(
+            frames: entryFrames.frames, items: conversationItems, visibleTop: topOverlayInset,
+            visibleBottom: viewportHeight - bottomOverlayInset - approvalInset)
         try timeline.mergeHistory(page, owner: owner, generation: generation)
         guard activeOwner == owner, timeline.generation == generation, let visible,
-              let item = conversationItems.first(where: { $0.entries.contains { $0.id == visible.key } })
+              let item = conversationItems.first(where: { $0.entries.contains { $0.id == visible.id } })
         else { return }
         historyScrollAnchor = TimelineHistoryScrollAnchor(
-            id: item.id, top: visible.value.minY, height: visible.value.height, viewportHeight: viewportHeight)
+            id: item.id, top: visible.frame.minY, height: visible.frame.height, viewportHeight: viewportHeight)
     }
 
     @MainActor func refreshHistory() async {

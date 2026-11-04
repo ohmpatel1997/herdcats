@@ -774,12 +774,14 @@ final class AgentTimelineUITests: XCTestCase {
         let scroll = app.scrollViews["agent-timeline-scroll"]
         XCTAssertTrue(scroll.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Load earlier messages"].exists)
+        let hint = app.descendants(matching: .any)["timeline-history-hint"].firstMatch
+        XCTAssertTrue(hint.waitForExistence(timeout: 5), "The pull-to-load hint shows before pulling")
         // Start below the floating pane cards so the gesture reaches history.
         let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
         let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
         for _ in 0..<4 { start.press(forDuration: 0.05, thenDragTo: end) }
         XCTAssertTrue(app.descendants(matching: .any)["timeline-message-message:earlier"].firstMatch.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["timeline-history-hint"].exists)
+        XCTAssertFalse(hint.exists)
         app.terminate()
     }
 
@@ -796,13 +798,7 @@ final class AgentTimelineUITests: XCTestCase {
         let marker = app.descendants(matching: .any)["timeline-message-message:user"].firstMatch
         XCTAssertTrue(marker.exists)
         let originalY = marker.frame.minY
-        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
-        let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
-        for _ in 0..<4 {
-            start.press(forDuration: 0.05, thenDragTo: end)
-            if app.staticTexts["Loading earlier messages…"].exists || !app.staticTexts["timeline-history-hint"].exists { break }
-        }
-        XCTAssertTrue(app.staticTexts["timeline-history-hint"].waitForNonExistence(timeout: 15))
+        pullUntilOlderPageArrives(app, scroll: scroll, lastOlderMessage: "message:older-7")
         XCTAssertTrue(marker.exists)
         XCTAssertEqual(marker.frame.minY, originalY, accuracy: 4,
                        "Prepending a page must preserve the reading position")
@@ -827,13 +823,7 @@ final class AgentTimelineUITests: XCTestCase {
         XCTAssertTrue(marker.exists)
         XCTAssertLessThanOrEqual(speaker.frame.maxY, marker.frame.minY + 1)
         let originalY = marker.frame.minY
-        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
-        let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
-        for _ in 0..<4 {
-            start.press(forDuration: 0.05, thenDragTo: end)
-            if app.staticTexts["Loading earlier messages…"].exists || !app.staticTexts["timeline-history-hint"].exists { break }
-        }
-        XCTAssertTrue(app.staticTexts["timeline-history-hint"].waitForNonExistence(timeout: 15))
+        pullUntilOlderPageArrives(app, scroll: scroll, lastOlderMessage: "message:older-7")
         XCTAssertTrue(marker.exists)
         XCTAssertEqual(marker.frame.minY, originalY, accuracy: 4,
                        "Removing the speaker row above the first message must not move it")
@@ -861,14 +851,15 @@ final class AgentTimelineUITests: XCTestCase {
         XCTAssertEqual(mine.value as? String, "Review the connection guidance and make it clearer in light mode.")
         let reply = app.descendants(matching: .any)["timeline-message-message:assistant"].firstMatch
         XCTAssertTrue(reply.exists)
-        // Your bubble hugs the trailing side; the agent's reply starts at the leading edge.
-        XCTAssertGreaterThan(mine.frame.minX, scroll.frame.minX + 40)
-        XCTAssertGreaterThan(mine.frame.maxX, scroll.frame.midX)
-        XCTAssertLessThan(reply.frame.minX, scroll.frame.minX + 24)
         // The agent is named once, above the first reply of its turn.
         let speaker = app.descendants(matching: .any)["timeline-speaker-message:assistant"].firstMatch
         XCTAssertTrue(speaker.exists)
         XCTAssertEqual(speaker.label, "Claude")
+        // Measured against the column, which is centred on iPad: your bubble
+        // hugs its trailing side, and the reply and its name share its leading edge.
+        XCTAssertGreaterThan(mine.frame.minX, reply.frame.minX + 40)
+        XCTAssertGreaterThan(mine.frame.maxX, scroll.frame.midX)
+        XCTAssertEqual(reply.frame.minX, speaker.frame.minX, accuracy: 2)
         XCTAssertLessThanOrEqual(speaker.frame.maxY, reply.frame.minY + 1)
         XCTAssertGreaterThan(speaker.frame.minY, mine.frame.maxY)
         XCTAssertFalse(app.descendants(matching: .any)["timeline-speaker-message:user"].exists)
@@ -1121,6 +1112,23 @@ final class AgentTimelineUITests: XCTestCase {
         app.buttons["model-configuration-effort"].tap()
         for name in ["Low", "Medium", "High"] { XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 3)) }
         // Read-only fixture: no choice is selected.
+    }
+
+    /// Pulls down until the older page starts loading, then waits for it.
+    /// Each step is asserted, so a history test can't pass before the merge.
+    private func pullUntilOlderPageArrives(_ app: XCUIApplication, scroll: XCUIElement, lastOlderMessage: String) {
+        // Any element type: the hint is a notice, not necessarily plain text.
+        let hint = app.descendants(matching: .any)["timeline-history-hint"].firstMatch
+        XCTAssertTrue(hint.waitForExistence(timeout: 5), "The pull-to-load hint shows before pulling")
+        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+        let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
+        for _ in 0..<4 {
+            start.press(forDuration: 0.05, thenDragTo: end)
+            if !hint.exists || hint.label == "Loading earlier messages…" { break }
+        }
+        XCTAssertTrue(hint.waitForNonExistence(timeout: 15), "The older page finished loading")
+        XCTAssertTrue(app.descendants(matching: .any)["timeline-message-\(lastOlderMessage)"].firstMatch.waitForExistence(timeout: 5),
+                      "The older page arrived above the reading position")
     }
 
     private func launch(_ app: XCUIApplication) {

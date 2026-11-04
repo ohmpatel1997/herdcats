@@ -76,9 +76,12 @@ enum TimelineMarkdown {
         var seen: Set<URL> = []
         for run in attributed.runs {
             guard let url = run.link, seen.insert(url).inserted else { continue }
-            var name = "Open link: \(url.host?.lowercased() ?? url.absoluteString)"
-            // Two links to one host get their paths too, so the names differ.
-            if actions.contains(where: { $0.name == name }) { name += url.path }
+            // Name by host; add the path, then the whole address, only when
+            // an earlier link already took the shorter name.
+            let host = url.host?.lowercased() ?? url.absoluteString
+            var name = "Open link: \(host)"
+            if actions.contains(where: { $0.name == name }) { name = "Open link: \(host)\(url.path)" }
+            if actions.contains(where: { $0.name == name }) { name = "Open link: \(url.absoluteString)" }
             actions.append(TimelineLinkAction(name: name, url: url))
         }
         return actions
@@ -250,8 +253,10 @@ struct AgentTimelineEntryView: View {
 
     @ViewBuilder private var noticeLayout: some View {
         if entry.kind == "record" {
+            // Leading, like the record details under it.
             VStack(alignment: .leading, spacing: 6) {
-                TimelineNotice("Unsupported content: \(entry.text)", systemImage: "questionmark.square.dashed")
+                TimelineNotice("Unsupported content: \(entry.text)", systemImage: "questionmark.square.dashed",
+                    alignment: .leading)
                 if let details = entry.details {
                     Text(details).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
                         .textSelection(.enabled).lineLimit(8)
@@ -267,15 +272,16 @@ struct AgentTimelineEntryView: View {
 
     /// Muted text is too faint on your bubble in some palettes, so captions
     /// inside it use the text colour.
-    private var captionColor: Color {
-        TimelineTurnLayout.role(entry: entry) == .user ? Theme.text : Theme.textMuted
-    }
+    private var captionColor: Color { isYours ? Theme.text : Theme.textMuted }
+    private var isYours: Bool { TimelineTurnLayout.role(entry: entry) == .user }
 
     @ViewBuilder private var imageContent: some View {
         if let thumbnail {
             Button { previewURL = originalURL } label: {
                 Image(uiImage: thumbnail).resizable().scaledToFit().frame(maxHeight: 320)
-                    .accessibilityLabel("Session image")
+                    // The bubble's "You" isn't always spoken inside a group,
+                    // so the image itself says who sent it.
+                    .accessibilityLabel(isYours ? "Image you sent" : "Session image")
                     .accessibilityIdentifier("timeline-image-\(entry.id)")
             }.buttonStyle(.plain)
             Text("Tap to open original").font(.jost(.caption)).foregroundStyle(captionColor)
@@ -288,7 +294,7 @@ struct AgentTimelineEntryView: View {
             Text(imageError).font(.jost(.caption)).foregroundStyle(captionColor)
             Button("Retry") { Task { await loadImage() } }
         } else {
-            ProgressView("Loading image…")
+            ProgressView { Text("Loading image…").foregroundStyle(captionColor) }
         }
     }
     @MainActor private func loadImage() async {

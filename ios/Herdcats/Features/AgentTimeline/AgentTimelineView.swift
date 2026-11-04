@@ -738,7 +738,7 @@ struct TimelineGapRow: View {
     }
 }
 
-/// A short centred line about the conversation itself, such as "Turn
+/// A short line about the conversation itself, such as "Turn
 /// interrupted" or "Pull down to load earlier messages". The words stay
 /// muted; only the icon carries the warning or error colour.
 struct TimelineNotice: View {
@@ -747,11 +747,14 @@ struct TimelineNotice: View {
     let text: String
     let systemImage: String
     var kind: Kind = .info
+    /// Centred by default; leading when it heads left-aligned details.
+    var alignment: HorizontalAlignment = .center
 
-    init(_ text: String, systemImage: String, kind: Kind = .info) {
+    init(_ text: String, systemImage: String, kind: Kind = .info, alignment: HorizontalAlignment = .center) {
         self.text = text
         self.systemImage = systemImage
         self.kind = kind
+        self.alignment = alignment
     }
 
     private var iconColor: Color {
@@ -771,8 +774,8 @@ struct TimelineNotice: View {
                 .foregroundStyle(iconColor)
         }
         .font(.jost(.caption))
-        .multilineTextAlignment(.center)
-        .frame(maxWidth: .infinity)
+        .multilineTextAlignment(alignment == .leading ? .leading : .center)
+        .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .center)
         // One static text element, read and found by its words alone.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text)

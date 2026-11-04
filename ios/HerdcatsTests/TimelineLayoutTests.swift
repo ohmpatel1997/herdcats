@@ -173,11 +173,18 @@ struct TimelineLayoutTests {
         let sameHost = TimelineMarkdown.linkActions(TimelineMarkdown.bubbleStyled(
             "[a](https://example.com/a) and [b](https://example.com/b)"))
         #expect(sameHost.map(\.name) == ["Open link: example.com", "Open link: example.com/b"])
+        // Links that differ only by query still get distinct names.
+        let sameHostAndPath = TimelineMarkdown.linkActions(TimelineMarkdown.bubbleStyled(
+            "[a](https://example.com/p?x=1), [b](https://example.com/p?x=2) and [c](https://example.com/p?x=3)"))
+        #expect(sameHostAndPath.map(\.name) == ["Open link: example.com", "Open link: example.com/p",
+                                                "Open link: https://example.com/p?x=3"])
+        #expect(Set(sameHostAndPath.map(\.name)).count == 3)
     }
 
-    @Test func itemRowsCarryNoNeighbourLayout() {
-        // The same message renders the same way wherever it sits: its row
-        // holds only the item, and its layout comes from the entry alone.
+    @Test func itemRowsHoldOnlyTheirItem() {
+        // An item row holds the item and nothing about its neighbours, and
+        // the layout role comes from the entry alone. The reading position
+        // itself is covered by the prepend test above and the UI tests.
         let reply = agent("reply")
         let mine = user("mine")
         for neighbours in [[], [user("u")], [agent("a")], [tool("t")], [interrupted("1")]] {
@@ -188,6 +195,27 @@ struct TimelineLayoutTests {
                 #expect(TimelineTurnLayout.role(entry: entry) == (entry.role == "user" ? .user : .agent))
             }
         }
+    }
+
+    @Test func historyAnchorSkipsALeadingNotice() {
+        // Loaded history starting [record, agent]: the speaker row between
+        // them disappears when an older page ends mid-turn, so the agent's
+        // message, not the record above it, is the one to hold still.
+        let loaded = items([record("r"), agent("a"), user("u")])
+        let frames: [String: CGRect] = [
+            "r": CGRect(x: 0, y: 100, width: 300, height: 20),
+            "a": CGRect(x: 0, y: 150, width: 300, height: 80),
+            "u": CGRect(x: 0, y: 260, width: 300, height: 40),
+        ]
+        let anchor = TimelineHistoryAnchor.pick(frames: frames, items: loaded, visibleTop: 90, visibleBottom: 600)
+        #expect(anchor?.id == "a")
+        #expect(anchor?.frame == frames["a"])
+        // Only a notice in view: hold it rather than nothing.
+        let onlyNotice = TimelineHistoryAnchor.pick(frames: frames, items: loaded, visibleTop: 90, visibleBottom: 130)
+        #expect(onlyNotice?.id == "r")
+        // Items outside the band don't count; nothing in view gives no anchor.
+        #expect(TimelineHistoryAnchor.pick(frames: frames, items: loaded, visibleTop: 240, visibleBottom: 600)?.id == "u")
+        #expect(TimelineHistoryAnchor.pick(frames: frames, items: loaded, visibleTop: 400, visibleBottom: 600) == nil)
     }
 
     @Test func rowIdentifiersCannotCollideWithBridgeIds() {

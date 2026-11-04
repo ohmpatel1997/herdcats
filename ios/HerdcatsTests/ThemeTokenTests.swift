@@ -134,6 +134,7 @@ struct ThemeTokenTests {
         }
     }
 
+    /// Tool titles and Timeline notices both use `textMuted` on the canvas.
     @Test func toolTitlesMeetAAOnTheCanvas() {
         for (palette, dark) in Support.combinations {
             let ratio = Support.ratio(Support.color("muted", palette, dark: dark),
@@ -148,7 +149,20 @@ struct ThemeTokenTests {
         }
     }
 
-    @Test func speakerNamesAndNoticeTextAreReadableOnTheCanvas() {
+    @Test func toolRailIsVisibleInEveryPalette() {
+        // The rail is muted text at 35%. It is decorative, so it only needs
+        // to show: Solarized Light's raised fill would match its canvas.
+        for (palette, dark) in Support.combinations {
+            let muted = Support.color("muted", palette, dark: dark)
+            var alpha: CGFloat = 0
+            muted.getRed(nil, green: nil, blue: nil, alpha: &alpha)
+            let rail = muted.withAlphaComponent(alpha * 0.35)
+            let ratio = Support.ratio(rail, over: Support.color("background", palette, dark: dark))
+            #expect(ratio >= 1.4, "\(Support.name(palette, dark: dark)): \(ratio)")
+        }
+    }
+
+    @Test func speakerNamesAreReadableOnTheCanvas() {
         for (palette, dark) in Support.combinations {
             let ratio = Support.ratio(Support.color("text", palette, dark: dark),
                                       over: Support.color("background", palette, dark: dark))

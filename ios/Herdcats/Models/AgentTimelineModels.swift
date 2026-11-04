@@ -706,6 +706,25 @@ enum TimelineRows {
     }
 }
 
+/// Picks the message to hold still while older messages load above it.
+enum TimelineHistoryAnchor {
+    /// The topmost item whose frame overlaps the visible band, preferring
+    /// anything that isn't a notice. A notice can be the first loaded item
+    /// with a speaker row below it; that row disappears when the older page
+    /// arrives, so holding the notice still would let the message under it
+    /// jump. Falls back to a notice when nothing else is visible.
+    static func pick(frames: [String: CGRect], items: [TimelineConversationItem],
+                     visibleTop: CGFloat, visibleBottom: CGFloat) -> (id: String, frame: CGRect)? {
+        let notices = Set(items.filter { TimelineTurnLayout.role($0) == .notice }.map(\.id))
+        let visible = frames.filter { $0.value.maxY > visibleTop && $0.value.minY < visibleBottom }
+        let topmost: ([String: CGRect]) -> (key: String, value: CGRect)? = { candidates in
+            candidates.min { $0.value.minY < $1.value.minY }
+        }
+        guard let chosen = topmost(visible.filter { !notices.contains($0.key) }) ?? topmost(visible) else { return nil }
+        return (chosen.key, chosen.value)
+    }
+}
+
 enum TimelineActivitySummary {
     static func isCommand(_ entry: AgentTimelineEntry) -> Bool {
         ["bash", "run_command", "exec_command", "shell_command", "shell"].contains(entry.toolName?.lowercased() ?? "")

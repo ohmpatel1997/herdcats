@@ -156,10 +156,10 @@ img.pixel, canvas.pixel {
 
 ### Timeline partition (iOS)
 - **Who said what by shape and position first, colour second**, so it reads in greyscale too.
-- **Your messages:** a bubble on the trailing side that hugs its text. It is at most 560pt wide and keeps 48pt clear on the leading side (16pt at accessibility text sizes). Fill `userBubble`, 16pt corners with a 6pt corner at the bottom trailing edge, padding 14×10. Links inside take the text colour and an underline. VoiceOver reads the bubble as "You" with the message as its value; each link is a named action.
+- **Your messages:** a bubble on the trailing side that hugs its text. It is at most 560pt wide and keeps 48pt clear on the leading side (16pt at accessibility text sizes). Fill `userBubble`: `#435C54` at night (mint-200 at 28% over night-950) and `#ABE0B6` by day; other palettes mix their accent into the canvas, 16% in Catppuccin and Solarized Light and 10% in Solarized Dark. 16pt corners with a 6pt corner at the bottom trailing edge, padding 14×10. Links inside take the text colour and an underline. VoiceOver reads the bubble as "You" with the message as its value; each link is a named action. An image you sent reads "Image you sent".
 - **The agent's messages:** open text across the column with no fill, under a speaker line (agent icon and name, footnote semibold). The speaker line is a VoiceOver heading and appears once per turn.
-- **Tool steps:** one summary row per run of tools, in muted subheadline beside a 2pt `raised` rail, at least 44pt tall. A running row shows the working spinner.
-- **Notices** (turn interrupted, history hints, delayed source): a centred muted caption with an icon. Only the icon takes the warning or error colour.
+- **Tool steps:** one summary row per run of tools, in muted subheadline beside a 2pt rail of muted text at 35%, at least 44pt tall. A running row shows the working spinner.
+- **Notices** (turn interrupted, history hints, delayed source): a centred muted caption with an icon (leading when it heads an unsupported record's details). Only the icon takes the warning or error colour.
 - **Spacing:** 24pt where the speaker changes, 12pt within a turn. The column is at most 720pt wide and centred on iPad and the Duo's inner screen.
 - **Under the pane switcher:** the strip behind the switcher takes the pane's canvas and fades into the content over 16pt, in both the Timeline and the terminal.
 
@@ -212,7 +212,6 @@ Pages use these tokens, never the raw ramp, so both themes come from one stylesh
 | `--accent-fill-hover` | `#F8F8F8` | `#1B282E` | Primary button hover |
 | `--warm` | `#4B221C` | `#8A3324` | Sign badges (brightened by day so it reads on light grounds) |
 | `--sign-bg` | `#ABE0B6` | `#ABE0B6` | Sign badge fill |
-| `userBubble` (iOS) | `#435C54` (mint-200 at 28% over night-950) | `#ABE0B6` | Your messages in the Timeline. Other palettes mix their accent into the canvas: 16% in Catppuccin and Solarized Light, 10% in Solarized Dark |
 | `--focus` | `#F8F8F8` | `#1B282E` | Focus rings |
 | `--overlay` | night-950 at 88% | `#EEF6F1` at 90% | Modal and menu scrims |
 
