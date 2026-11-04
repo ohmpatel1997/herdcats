@@ -301,34 +301,58 @@ struct PaneOutputScrollView: View, Equatable {
 
 /// Whether the terminal printed new lines while you were scrolled up.
 enum TerminalNewOutput {
-    /// An agent's live area (spinner, status line, input box) redraws in
-    /// place at the bottom of the screen. Changes there don't count.
-    static let liveRows = 6
-    private static let tailLength = 3
+    /// The tallest live area an agent is expected to redraw in place at the
+    /// bottom: spinner and timer, status line, input box, and a todo list.
+    static let liveRows = 12
+    private static let anchorLength = 3
 
-    /// The last few lines above the live area.
+    /// A few lines just above the live area, and how many lines sat below
+    /// them when you were last at the bottom.
     struct Mark: Equatable {
-        fileprivate let tail: [String]
+        fileprivate let lineCount: Int
+        fileprivate let anchor: [String]
+        fileprivate let linesBelow: Int
     }
 
     static func mark(_ output: String) -> Mark {
-        Mark(tail: settled(output).suffix(tailLength).map(String.init))
+        let lines = trimmed(output)
+        // The anchor's last line sits `liveRows` above the bottom, moving up
+        // past blank lines, which repeat too often to find again reliably.
+        var end = lines.count - 1 - liveRows
+        while end >= anchorLength - 1, isBlank(lines[(end - anchorLength + 1)...end]) { end -= 1 }
+        guard end >= anchorLength - 1 else { return Mark(lineCount: lines.count, anchor: [], linesBelow: 0) }
+        return Mark(lineCount: lines.count, anchor: lines[(end - anchorLength + 1)...end].map(String.init),
+                    linesBelow: lines.count - 1 - end)
     }
 
-    /// True when the lines above the live area no longer end where they did
-    /// at `seen`: new lines were printed. The pane keeps only its most
-    /// recent lines, so this compares content rather than counting lines.
+    /// True when real output moved lines up into the scrollback since `seen`:
+    /// the anchor now has more lines below it, or it scrolled out of the
+    /// pane's most recent lines. A redraw in place, however much of the live
+    /// area changes, leaves the anchor where it was.
     static func hasNewLines(seen: Mark?, current: String) -> Bool {
         guard let seen else { return false }
-        let lines = settled(current)
-        guard !seen.tail.isEmpty else { return !lines.isEmpty }
-        return lines.suffix(seen.tail.count).map(String.init) != seen.tail
+        let lines = trimmed(current)
+        // Too little output to anchor on: more lines than before is new.
+        guard !seen.anchor.isEmpty else { return lines.count > seen.lineCount }
+        var end = lines.count - 1
+        while end >= anchorLength - 1 {
+            if lines[(end - anchorLength + 1)...end].elementsEqual(seen.anchor, by: { $0 == $1 }) {
+                return lines.count - 1 - end > seen.linesBelow
+            }
+            end -= 1
+        }
+        // Gone: scrolled out of the recent lines, or the screen was replaced.
+        return true
     }
 
-    private static func settled(_ output: String) -> ArraySlice<Substring> {
+    private static func trimmed(_ output: String) -> [Substring] {
         var lines = output.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
         while let last = lines.last, last.allSatisfy(\.isWhitespace) { lines.removeLast() }
-        return lines.dropLast(liveRows)
+        return lines
+    }
+
+    private static func isBlank(_ lines: ArraySlice<Substring>) -> Bool {
+        lines.allSatisfy { $0.allSatisfy(\.isWhitespace) }
     }
 }
 

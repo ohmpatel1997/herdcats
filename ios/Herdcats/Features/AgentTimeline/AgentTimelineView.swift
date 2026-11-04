@@ -278,6 +278,7 @@ struct AgentTimelineView: View {
                                     .padding(.top, Self.sectionGap)
                             }
                             if TimelineLiveState.showsWorkingRow(
+                                isLive: timeline.phase == .ready,
                                 agentStatus: timeline.agentStatus, lastItem: items.last,
                                 pendingApproval: timeline.pendingApproval != nil,
                                 pendingQuestion: timeline.pendingQuestion != nil,
@@ -660,7 +661,14 @@ struct AgentTimelineView: View {
               let message = TimelineLiveState.turnEndAnnouncement(
                 agentName: TimelineSpeaker.name(agent: speakerAgent), previous: previous, current: current,
                 isFocusedPane: paneIsFocused) else { return }
-        UIAccessibility.post(notification: .announcement, argument: message)
+        let scope = contentScope
+        Task { @MainActor in
+            try? await Task.sleep(for: TimelineLiveState.announcementDelay(for: current))
+            // Say it only if this conversation is still in that status.
+            guard UIAccessibility.isVoiceOverRunning, scenePhase == .active,
+                  contentScope == scope, timeline.agentStatus == current else { return }
+            UIAccessibility.post(notification: .announcement, argument: message)
+        }
     }
 
     private var contentScope: String {

@@ -2,17 +2,19 @@ import SwiftUI
 
 /// What the Timeline shows and says about the agent's live state.
 enum TimelineLiveState {
-    /// "<name> is working" shows while the bridge reports working and
-    /// nothing waits for an answer. A running tool row already shows
-    /// progress, so the working row stays out of its way.
+    /// "<name> is working" shows while the live Timeline reports working
+    /// and nothing waits for an answer. A suspended Timeline keeps its last
+    /// status until a new snapshot arrives, so it shows nothing. A running
+    /// tool row already shows progress, so the working row stays out of its way.
     static func showsWorkingRow(
+        isLive: Bool,
         agentStatus: String?,
         lastItem: TimelineConversationItem?,
         pendingApproval: Bool,
         pendingQuestion: Bool,
         pendingPiDialog: Bool
     ) -> Bool {
-        guard agentStatus == AgentStatus.working.rawValue,
+        guard isLive, agentStatus == AgentStatus.working.rawValue,
               !pendingApproval, !pendingQuestion, !pendingPiDialog else { return false }
         if let lastItem, lastItem.isActivity, lastItem.entries.contains(where: TimelineActivitySummary.isRunning) {
             return false
@@ -38,14 +40,23 @@ enum TimelineLiveState {
         }
         return nil
     }
+
+    /// How long to wait before saying an announcement, then only if the
+    /// status hasn't moved on. "Needs your answer" is said at once. A
+    /// "finished" waits, so a brief idle between tool calls mid-turn isn't
+    /// announced as the end of the turn.
+    static func announcementDelay(for current: String?) -> Duration {
+        current == AgentStatus.blocked.rawValue ? .zero : .seconds(2)
+    }
 }
 
 /// Counts messages that arrived while you were scrolled up, for the badge
 /// on the jump-to-latest button.
 ///
 /// It remembers the message items on screen when you were last at the
-/// bottom, then counts the new message items (yours, the agent's, and
-/// images) after the newest of those that still exists. So:
+/// bottom, then counts the agent's new messages and images after the newest
+/// of those that still exists. Your own messages anchor the count but are
+/// never counted: you sent them. So:
 /// - a history page loaded above doesn't count;
 /// - a message revised in place keeps its id and doesn't count;
 /// - tool steps aren't messages, so a tool joining a group doesn't count;
@@ -72,7 +83,9 @@ struct TimelineUnseenCounter: Equatable {
             markSeen(items)
             return
         }
-        count = messages[(anchor + 1)...].filter { !seen.contains($0.id) }.count
+        count = messages[(anchor + 1)...].filter {
+            !seen.contains($0.id) && TimelineTurnLayout.role($0) == .agent
+        }.count
     }
 
     /// The badge's text: nothing at zero, and at most "99+".

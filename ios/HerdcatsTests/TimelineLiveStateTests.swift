@@ -31,11 +31,15 @@ struct TimelineLiveStateTests {
 
     @Test func workingRowShowsOnlyWhileWorkingWithNothingPending() {
         let last = items([message("a")]).last
-        func shows(_ status: String?, approval: Bool = false, question: Bool = false, dialog: Bool = false) -> Bool {
-            TimelineLiveState.showsWorkingRow(agentStatus: status, lastItem: last, pendingApproval: approval,
-                                              pendingQuestion: question, pendingPiDialog: dialog)
+        func shows(_ status: String?, live: Bool = true, approval: Bool = false, question: Bool = false,
+                   dialog: Bool = false) -> Bool {
+            TimelineLiveState.showsWorkingRow(isLive: live, agentStatus: status, lastItem: last,
+                                              pendingApproval: approval, pendingQuestion: question,
+                                              pendingPiDialog: dialog)
         }
         #expect(shows("working"))
+        // A suspended Timeline still holds its last status; it shows nothing.
+        #expect(!shows("working", live: false))
         for status in ["idle", "done", "blocked", "unknown", nil] as [String?] {
             #expect(!shows(status), "\(status ?? "nil")")
         }
@@ -43,13 +47,13 @@ struct TimelineLiveStateTests {
         #expect(!shows("working", question: true))
         #expect(!shows("working", dialog: true))
         // An empty conversation can still be working.
-        #expect(TimelineLiveState.showsWorkingRow(agentStatus: "working", lastItem: nil, pendingApproval: false,
-                                                  pendingQuestion: false, pendingPiDialog: false))
+        #expect(TimelineLiveState.showsWorkingRow(isLive: true, agentStatus: "working", lastItem: nil,
+                                                  pendingApproval: false, pendingQuestion: false, pendingPiDialog: false))
     }
 
     @Test func workingRowHidesWhenARunningToolRowShowsProgress() {
         func shows(_ entries: [AgentTimelineEntry]) -> Bool {
-            TimelineLiveState.showsWorkingRow(agentStatus: "working", lastItem: items(entries).last,
+            TimelineLiveState.showsWorkingRow(isLive: true, agentStatus: "working", lastItem: items(entries).last,
                                               pendingApproval: false, pendingQuestion: false, pendingPiDialog: false)
         }
         #expect(!shows([message("a"), tool("t1"), tool("t2", status: "running")]))
@@ -94,6 +98,12 @@ struct TimelineLiveStateTests {
         #expect(announce("working", nil) == nil)
     }
 
+    @Test func finishedWaitsBeforeItIsSaidButNeedsAnswerDoesNot() {
+        #expect(TimelineLiveState.announcementDelay(for: "blocked") == .zero)
+        #expect(TimelineLiveState.announcementDelay(for: "done") == .seconds(2))
+        #expect(TimelineLiveState.announcementDelay(for: "idle") == .seconds(2))
+    }
+
     @Test func noAnnouncementForUnfocusedPane() {
         #expect(announce("working", "done", focused: false) == nil)
         #expect(announce("working", "blocked", focused: false) == nil)
@@ -127,11 +137,22 @@ struct TimelineLiveStateTests {
     @Test func unseenCountCountsMessageItemsAfterTheLastSeenItem() {
         var unseen = counter(seen: [message("u", role: "user"), message("a")])
         unseen.update(items([message("u", role: "user"), message("a"), message("b"), tool("t"),
-                             message("img", role: "user", kind: "image"), message("c", role: "user")]))
-        // b, the image and c are new messages; the tool row isn't one.
+                             message("chart", kind: "image"), message("c")]))
+        // b, the agent's image and c are new; the tool row isn't a message.
         #expect(unseen.count == 3)
         unseen.markSeen(items([message("a"), message("b")]))
         #expect(unseen.count == 0)
+    }
+
+    @Test func yourOwnMessagesAreNeverCountedAsNew() {
+        var unseen = counter(seen: [message("a")])
+        unseen.update(items([message("a"), message("mine", role: "user"),
+                             message("photo", role: "user", kind: "image")]))
+        #expect(unseen.count == 0)
+        // They still anchor the count once seen.
+        unseen.markSeen(items([message("a"), message("mine", role: "user")]))
+        unseen.update(items([message("mine", role: "user"), message("reply")]))
+        #expect(unseen.count == 1)
     }
 
     @Test func unseenCountIgnoresPrependedHistory() {
@@ -202,35 +223,54 @@ struct TerminalNewOutputTests {
     private func screen(_ history: [String], live: [String]) -> String {
         (history + live).joined(separator: "\n")
     }
-    private let live = ["", "╭──────────╮", "│ > typing │", "╰──────────╯", "  ✻ Thinking… 3s", "  ? for shortcuts"]
+    /// A live area of `rows` rows whose top row is a ticking timer, like an
+    /// agent's spinner above its todo list, input box and status line.
+    private func live(_ rows: Int, seconds: Int) -> [String] {
+        ["  ✻ Thinking… \(seconds)s"] + (1..<rows).map { "  ☐ todo \($0)" }
+    }
+    private let history = (1...40).map { "line \($0)" }
 
     @Test func terminalDotIgnoresBottomRowRedraws() {
-        let history = (1...20).map { "line \($0)" }
-        let seen = TerminalNewOutput.mark(screen(history, live: live))
-        // The spinner, status line and input box redraw in place.
-        let redrawn = ["", "╭──────────╮", "│ > typing more │", "╰──────────╯", "  ✻ Thinking… 9s", "  esc to interrupt"]
+        // Only the spinner's timer changes, in live areas up to 12 rows tall.
+        for rows in 7...12 {
+            let seen = TerminalNewOutput.mark(screen(history, live: live(rows, seconds: 3)))
+            #expect(!TerminalNewOutput.hasNewLines(seen: seen, current: screen(history, live: live(rows, seconds: 9))),
+                    "\(rows) rows")
+        }
+        // The whole live area redrawn, and trailing blank lines, don't count either.
+        let seen = TerminalNewOutput.mark(screen(history, live: live(6, seconds: 1)))
+        let redrawn = ["╭──────────╮", "│ > typing more │", "╰──────────╯", "  esc to interrupt", "", "  ✻ 2s"]
         #expect(!TerminalNewOutput.hasNewLines(seen: seen, current: screen(history, live: redrawn)))
-        // Trailing blank lines don't shift what counts as the live area.
-        #expect(!TerminalNewOutput.hasNewLines(seen: seen, current: screen(history, live: live) + "\n\n  \n"))
+        #expect(!TerminalNewOutput.hasNewLines(seen: seen, current: screen(history, live: live(6, seconds: 1)) + "\n\n  \n"))
     }
 
     @Test func terminalDotShowsForAppendedLines() {
-        let history = (1...20).map { "line \($0)" }
-        let seen = TerminalNewOutput.mark(screen(history, live: live))
-        #expect(TerminalNewOutput.hasNewLines(seen: seen, current: screen(history + ["line 21"], live: live)))
-        // The pane keeps only its newest lines: the oldest scroll away as new
-        // ones arrive, and the count stays the same.
-        let scrolled = Array(history.dropFirst(2)) + ["line 21", "line 22"]
+        // Real output moves lines up into the scrollback above the live area.
+        for rows in [6, 9, 12] {
+            let seen = TerminalNewOutput.mark(screen(history, live: live(rows, seconds: 3)))
+            let printed = screen(history + ["Edited README.md", "Ran 24 tests"], live: live(rows, seconds: 9))
+            #expect(TerminalNewOutput.hasNewLines(seen: seen, current: printed), "\(rows) rows")
+        }
+        // Output too short to anchor on yet, then some arrives.
+        let short = TerminalNewOutput.mark(screen([], live: live(6, seconds: 1)))
+        #expect(!TerminalNewOutput.hasNewLines(seen: short, current: screen([], live: live(6, seconds: 2))))
+        #expect(TerminalNewOutput.hasNewLines(seen: short, current: screen(["first"], live: live(6, seconds: 2))))
+    }
+
+    @Test func terminalDotShowsWhenOutputReplacesTheSameNumberOfLines() {
+        // The pane keeps only its newest lines: two new lines push the two
+        // oldest out, so the line count doesn't change, but the dot shows.
+        let seen = TerminalNewOutput.mark(screen(history, live: live(10, seconds: 3)))
+        let scrolled = Array(history.dropFirst(2)) + ["Edited README.md", "Ran 24 tests"]
         #expect(scrolled.count == history.count)
-        #expect(TerminalNewOutput.hasNewLines(seen: seen, current: screen(scrolled, live: live)))
-        // Output too short to have settled lines yet, then some arrive.
-        let short = TerminalNewOutput.mark(screen([], live: live))
-        #expect(!TerminalNewOutput.hasNewLines(seen: short, current: screen([], live: live)))
-        #expect(TerminalNewOutput.hasNewLines(seen: short, current: screen(["first"], live: live)))
+        #expect(TerminalNewOutput.hasNewLines(seen: seen, current: screen(scrolled, live: live(10, seconds: 9))))
+        // A cleared and redrawn screen is new output too.
+        let cleared = screen((1...30).map { "fresh \($0)" }, live: live(10, seconds: 9))
+        #expect(TerminalNewOutput.hasNewLines(seen: seen, current: cleared))
     }
 
     @Test func terminalDotClearsAtTheBottom() {
-        let current = screen((1...30).map { "line \($0)" }, live: live)
+        let current = screen(history, live: live(8, seconds: 4))
         // At the bottom, the mark is whatever is on screen, so no dot.
         #expect(!TerminalNewOutput.hasNewLines(seen: TerminalNewOutput.mark(current), current: current))
         // Before any mark there is nothing to compare against.
