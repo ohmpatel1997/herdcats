@@ -539,17 +539,19 @@ struct AgentTimelineView: View {
                 beginSetup(reason: .updateRequired, shouldUseTerminalOnDismiss: timeline.phase != .ready)
             }
         }
-        .onChange(of: timeline.revision) { _, _ in
-            let items = conversationItems
-            if atBottom || following { unseen.markSeen(items) } else { unseen.update(items) }
-        }
-        .onChange(of: timeline.identity) { _, _ in unseen.markSeen(conversationItems) }
-        .onChange(of: atBottom) { _, bottom in if bottom { unseen.markSeen(conversationItems) } }
-        .onChange(of: StatusKey(scope: contentScope, status: timeline.agentStatus)) { previous, current in
-            // A new session or snapshot is not a status change of this one.
-            guard previous.scope == current.scope else { return }
-            announceStatusChange(from: previous.status, to: current.status)
-        }
+        .modifier(LiveStateObserver(
+            revision: timeline.revision, identity: timeline.identity, atBottom: atBottom,
+            status: StatusKey(scope: contentScope, status: timeline.agentStatus),
+            onRevision: {
+                let items = conversationItems
+                if atBottom || following { unseen.markSeen(items) } else { unseen.update(items) }
+            },
+            onSeen: { unseen.markSeen(conversationItems) },
+            onStatus: { previous, current in
+                // A new session or snapshot is not a status change of this one.
+                guard previous.scope == current.scope else { return }
+                announceStatusChange(from: previous.status, to: current.status)
+            }))
         .onChange(of: contentScope) { _, _ in
             unseen.markSeen(conversationItems)
             historyLoader.cancel()
@@ -623,9 +625,31 @@ struct AgentTimelineView: View {
         sheetState.sync(visible: matchesLiveTimeline && approvalViewVisible && scenePhase == .active,
             phone: phoneAnswersSelection != nil, helper: showsSetup, codex: showsCodexDaemonConfirm)
     }
-    private struct StatusKey: Equatable {
+    fileprivate struct StatusKey: Equatable {
         let scope: String
         let status: String?
+    }
+
+    /// Keeps the unseen-message badge and the spoken status updates current.
+    /// One modifier rather than four `onChange` calls keeps `body` quick to
+    /// type-check.
+    fileprivate struct LiveStateObserver: ViewModifier {
+        let revision: UInt64
+        let identity: AgentTimelineIdentity?
+        let atBottom: Bool
+        let status: StatusKey
+        let onRevision: () -> Void
+        /// Everything loaded counts as seen: a new session, or back at the bottom.
+        let onSeen: () -> Void
+        let onStatus: (StatusKey, StatusKey) -> Void
+
+        func body(content: Content) -> some View {
+            content
+                .onChange(of: revision) { _, _ in onRevision() }
+                .onChange(of: identity) { _, _ in onSeen() }
+                .onChange(of: atBottom) { _, bottom in if bottom { onSeen() } }
+                .onChange(of: status) { previous, current in onStatus(previous, current) }
+        }
     }
 
     /// Tells VoiceOver users when the turn finishes or an answer is needed.
