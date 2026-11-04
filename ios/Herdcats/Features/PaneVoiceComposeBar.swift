@@ -473,7 +473,7 @@ struct PaneVoiceComposeBar: View {
                     }
                 }
             }
-            .frame(height: 38)
+            .frame(height: HerdrKeyCapStyle.minimumTarget)
             .accessibilityLabel("Function keys")
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -496,14 +496,9 @@ struct PaneVoiceComposeBar: View {
             sendLiveKey(key.token)
         } label: {
             Text(key.label)
-                .font(.jost(.caption, weight: .semibold).monospaced())
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(maxWidth: .infinity)
-                .frame(height: 38)
-                .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
         }
-        .buttonStyle(.plain)
+        // A 44pt slot with a 38pt cap inside it.
+        .buttonStyle(.herdrKeyCap)
         .disabled(!isLiveEnabled)
         .accessibilityLabel("Send \(key.label)")
         .accessibilityIdentifier("pane-live-extra-key-\(key.token)")

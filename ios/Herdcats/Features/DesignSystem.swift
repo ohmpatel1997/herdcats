@@ -267,30 +267,36 @@ final class AppThemePreferences {
 }
 
 enum Theme {
+    /// Moonlit's night and day values for each token, with their alpha.
+    /// Other palettes start from this table and override it in `paletteColor`.
+    static let moonlitTokens: [(name: String, night: UInt32, day: UInt32, nightAlpha: CGFloat, dayAlpha: CGFloat)] = [
+        ("accent", Palette.mint200, Palette.night800, 1, 1),
+        ("accentFill", Palette.mint200, Palette.night800, 1, 1),
+        ("sky", Palette.teal600, 0xD3EBDD, 1, 1),
+        ("background", Palette.night950, 0xDCEBE2, 1, 1),
+        ("field", Palette.night950, 0xEEF6F1, 1, 1),
+        ("card", 0x31464E, 0xF8FBF9, 1, 1),
+        ("border", Palette.night800, 0xC5DCCF, 1, 1),
+        ("separator", 0x28343A, 0xCBDAD2, 1, 1),
+        ("raised", 0x446670, 0xC5DCCF, 1, 1),
+        // Key caps and badges. The same as raised, except in Solarized Dark.
+        ("keyCap", 0x446670, 0xC5DCCF, 1, 1),
+        ("text", Palette.paper50, Palette.night950, 1, 1),
+        ("muted", Palette.paper50, Palette.night950, 0.72, 0.72),
+        ("warm", Palette.lacquer900, 0x8A3324, 1, 1),
+        ("idle", 0x8CC2B6, Palette.teal600, 1, 1),
+        ("done", Palette.mint200, 0x2F7148, 1, 1),
+        ("working", 0xE0B866, 0x865C0E, 1, 1),
+        ("blocked", 0xF29A86, 0xA8432F, 1, 1),
+        ("addition", Palette.mint200, Palette.mint200, 0.22, 0.6),
+        ("deletion", 0xF29A86, 0xA8432F, 0.24, 0.18),
+        ("onPrimary", Palette.night950, Palette.paper50, 1, 1)
+    ]
+
     /// Stable Color values preserve equality and avoid creating UIKit providers
     /// for every view update. The cache has no mutable shared state.
     private static let colors: [String: Color] = {
-        let tokens: [(String, UInt32, UInt32, CGFloat, CGFloat)] = [
-            ("accent", Palette.mint200, Palette.night800, 1, 1),
-            ("accentFill", Palette.mint200, Palette.night800, 1, 1),
-            ("sky", Palette.teal600, 0xD3EBDD, 1, 1),
-            ("background", Palette.night950, 0xDCEBE2, 1, 1),
-            ("field", Palette.night950, 0xEEF6F1, 1, 1),
-            ("card", 0x31464E, 0xF8FBF9, 1, 1),
-            ("border", Palette.night800, 0xC5DCCF, 1, 1),
-            ("separator", 0x28343A, 0xCBDAD2, 1, 1),
-            ("raised", 0x446670, 0xC5DCCF, 1, 1),
-            ("text", Palette.paper50, Palette.night950, 1, 1),
-            ("muted", Palette.paper50, Palette.night950, 0.72, 0.72),
-            ("warm", Palette.lacquer900, 0x8A3324, 1, 1),
-            ("idle", 0x8CC2B6, Palette.teal600, 1, 1),
-            ("done", Palette.mint200, 0x2F7148, 1, 1),
-            ("working", 0xE0B866, 0x865C0E, 1, 1),
-            ("blocked", 0xF29A86, 0xA8432F, 1, 1),
-            ("addition", Palette.mint200, Palette.mint200, 0.22, 0.6),
-            ("deletion", 0xF29A86, 0xA8432F, 0.24, 0.18),
-            ("onPrimary", Palette.night950, Palette.paper50, 1, 1)
-        ]
+        let tokens = moonlitTokens
         var result: [String: Color] = [:]
         for light in AppPalette.lightChoices {
             for dark in AppPalette.darkChoices {
@@ -331,7 +337,7 @@ enum Theme {
         case "accent", "accentFill": key = "mauve"
         case "background", "field": key = "mantle"
         case "card", "sky": key = "base"
-        case "border", "raised": key = "surface0"
+        case "border", "raised", "keyCap": key = "surface0"
         case "text": key = "text"
         case "muted": key = "subtext1"
         case "idle": key = "teal"
@@ -365,6 +371,9 @@ enum Theme {
         case "card", "sky": hex = dark ? 0x073642 : 0xFDF6E3
         case "separator": hex = dark ? 0x113842 : 0xD9D8C7
         case "border", "raised": hex = dark ? 0x586E75 : 0xEEE8D5
+        // Text on raised (base01) is only 2.0:1 at night, so dark key caps use
+        // base03, the darkest base, where it is 5.6:1.
+        case "keyCap": hex = dark ? 0x002B36 : 0xEEE8D5
         case "text": hex = dark ? 0x93A1A1 : 0x073642
         case "muted": hex = dark ? 0x93A1A1 : 0x586E75
         case "accent", "accentFill": hex = dark ? 0x4BA3DF : 0x1D6FA5
@@ -394,6 +403,9 @@ enum Theme {
     static var hairline: Color { color("border") }
     static var separator: Color { color("separator") }
     static var subtleFill: Color { color("raised") }
+    /// Fill for key caps and badges: text on it is at least 5.17:1 in every
+    /// palette. It equals `subtleFill` except in Solarized Dark.
+    static var keyCap: Color { color("keyCap") }
     static var rowBackground: Color { cardBackground }
     static var selectedFill: Color { subtleFill }
     static var border: Color { hairline }

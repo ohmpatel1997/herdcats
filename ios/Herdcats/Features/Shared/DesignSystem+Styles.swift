@@ -282,6 +282,79 @@ struct HerdrCardButtonStyle: ButtonStyle {
     }
 }
 
+/// A terminal key on the pane's key row or in its Keys drawer. Each key gets
+/// its own cap, drawn inside its slot so neighbouring keys read as separate,
+/// while the whole slot is the touch target. Slots are 44pt tall unless the
+/// caller passes its row's own height (the key row uses 42pt and 36pt).
+///
+/// - Normal: `text` on `keyCap`.
+/// - Armed (a modifier waiting for the next key): `onPrimary` on `accentFill`.
+/// - Locked (a modifier held for several keys; nothing uses it yet): armed,
+///   plus a bar under the label.
+/// - Pressed: the cap drops 1pt and its fill goes halfway to the card behind
+///   it. The label stays fully opaque.
+/// - Disabled: 45% opacity. The screen says why somewhere nearby.
+struct HerdrKeyCapStyle: ButtonStyle {
+    enum State: Equatable, Sendable {
+        case normal
+        case armed
+        case locked
+    }
+
+    var state: State = .normal
+    /// The slot's minimum height: 44pt by default, or the row's own height.
+    /// The cap sits inside it, inset by `horizontalInset` and `verticalInset`.
+    var minHeight: CGFloat = Self.minimumTarget
+
+    static let minimumTarget: CGFloat = 44
+    static let horizontalInset: CGFloat = 2
+    static let verticalInset: CGFloat = 3
+    static let cornerRadius: CGFloat = 6
+    /// How much `keyCap` stays in the pressed fill; the rest is the card.
+    static let pressedCapOpacity: Double = 0.5
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        let raised = state != .normal
+        let cap = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+        return configuration.label
+            .font(.jost(.caption, weight: .semibold).monospaced())
+            .foregroundStyle(raised ? Theme.onPrimary : Theme.text)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .padding(.horizontal, Self.horizontalInset + 2)
+            .frame(maxWidth: .infinity, minHeight: minHeight)
+            .background {
+                ZStack {
+                    if raised {
+                        cap.fill(Theme.accentFill)
+                    } else if pressed {
+                        cap.fill(Theme.cardBackground)
+                        cap.fill(Theme.keyCap.opacity(Self.pressedCapOpacity))
+                    } else {
+                        cap.fill(Theme.keyCap)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if state == .locked {
+                        Capsule()
+                            .fill(Theme.onPrimary)
+                            .frame(height: 2)
+                            .padding(.horizontal, 8)
+                            .padding(.bottom, 4)
+                    }
+                }
+                .padding(.horizontal, Self.horizontalInset)
+                .padding(.vertical, Self.verticalInset)
+            }
+            .offset(y: pressed ? 1 : 0)
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : 0.45)
+    }
+}
+
 // MARK: - ButtonStyle Convenience Extensions
 
 extension ButtonStyle where Self == HerdrPrimaryButtonStyle {
@@ -324,6 +397,17 @@ extension ButtonStyle where Self == HerdrGhostButtonStyle {
 
 extension ButtonStyle where Self == HerdrCardButtonStyle {
     static var herdrCard: HerdrCardButtonStyle { .init() }
+}
+
+extension ButtonStyle where Self == HerdrKeyCapStyle {
+    static var herdrKeyCap: HerdrKeyCapStyle { .init() }
+
+    static func herdrKeyCap(
+        _ state: HerdrKeyCapStyle.State,
+        minHeight: CGFloat = HerdrKeyCapStyle.minimumTarget
+    ) -> HerdrKeyCapStyle {
+        HerdrKeyCapStyle(state: state, minHeight: minHeight)
+    }
 }
 
 // MARK: - Previews

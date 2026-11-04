@@ -162,6 +162,14 @@ img.pixel, canvas.pixel {
 - Title `paper-50`, body `mint-200` or `teal-400` for secondary text.
 - **iOS app:** the canvas is one step deeper, `--bg-deep`, and cards sit on a lifted night surface, `#31464E` (day `#F8FBF9`), so they stand off the canvas by fill. The 1px `--border` outline (`#325156` at night) is kept but is deliberately soft against that fill. Chips, pills and the selected pane use `#446670` at night so they stay visible on the card. Fields recess to `--bg-deep`; native Settings rows use the card fill without an outline.
 
+### Key caps (iOS)
+- Terminal keys (the Keys drawer today, the pane's key row next) use `HerdrKeyCapStyle`: one cap per key, inset 2pt at the sides and 3pt top and bottom inside its slot, with 6pt corners. The whole slot is the touch target.
+- Slot heights: drawer and long-press arrow-row keys sit in 44pt slots, so each is a 38pt cap. The key row keeps its own heights (42pt on the Live toolbar, 36pt above Compose) and passes them to the style.
+- Label: Jost caption semibold, monospaced, in `text` on `keyCap`. `keyCap` is `raised` in every palette except Solarized Dark, where it is base03 `#002B36`, because text on Solarized Dark's raised is only 2.0:1. Text on `keyCap` is at least 5.17:1 in every palette.
+- Armed modifier: `onPrimary` on `accentFill`. Locked (not used yet): armed plus a 2pt bar under the label.
+- Pressed: the cap drops 1pt and its fill goes halfway to the card; the label stays opaque (at least 5.2:1).
+- Disabled: 45% opacity, with the reason shown nearby.
+
 ### Circular emblem
 - Mascot icon inside a circle with a 3px `mint-200` stroke and a transparent fill.
 
@@ -196,6 +204,7 @@ Pages use these tokens, never the raw ramp, so both themes come from one stylesh
 | `--bg-deep` | `#1B282E` | `#DCEBE2` | Footer, code blocks |
 | `--surface` | `#26343D` | `#F8FBF9` | Cards (always with a `--border` outline) |
 | `--raised` / `--border` | `#325156` | `#C5DCCF` | Active rows, chips, dividers |
+| `keyCap` (iOS) | `#446670` | `#C5DCCF` | Key caps; the same as the app's `raised`, except Solarized Dark uses base03 `#002B36` |
 | `--text` | `#F8F8F8` | `#1B282E` | Body text |
 | `--text-muted` | paper at 72% | night-950 at 72% | Secondary text |
 | `--accent` | `#ABE0B6` | `#325156` | Links, labels, icons |

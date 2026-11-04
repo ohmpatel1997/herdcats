@@ -535,30 +535,18 @@ struct AppPalettePreferenceTests {
     }
 
     @Test func paletteTextAndActionsMeetContrastOnCards() {
-        for palette in AppPalette.allCases where palette != .moonlit {
-            let dark = AppPalette.darkChoices.contains(palette)
+        // All eight palette and appearance pairs, Moonlit included. Moonlit's
+        // muted text is 72% opaque, so it is blended onto the card first.
+        for (palette, dark) in ContrastTestSupport.combinations {
             func color(_ token: String) -> UIColor {
-                Theme.paletteColor(token, palette: palette, dark: dark, fallback: 0)
+                ContrastTestSupport.color(token, palette, dark: dark)
             }
+            let name = ContrastTestSupport.name(palette, dark: dark)
             let card = color("card")
             for token in ["text", "muted", "accent", "idle", "done", "working", "blocked"] {
-                #expect(contrast(color(token), card) >= 4.5, "\(palette.title) \(token)")
+                #expect(ContrastTestSupport.ratio(color(token), over: card) >= 4.5, "\(name) \(token)")
             }
-            #expect(contrast(color("onPrimary"), color("accentFill")) >= 4.5)
+            #expect(ContrastTestSupport.ratio(color("onPrimary"), over: color("accentFill")) >= 4.5, "\(name) primary button")
         }
-    }
-
-    private func contrast(_ first: UIColor, _ second: UIColor) -> Double {
-        func luminance(_ color: UIColor) -> Double {
-            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
-            color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-            func linear(_ component: CGFloat) -> Double {
-                let c = Double(component)
-                return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
-            }
-            return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
-        }
-        let a = luminance(first), b = luminance(second)
-        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
     }
 }
