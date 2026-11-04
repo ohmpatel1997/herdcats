@@ -311,7 +311,8 @@ struct JumpToLatestButton: View {
     var body: some View {
         Button(action: action) { icon }
             .buttonStyle(.plain)
-            .overlay(alignment: .topTrailing) { badgeView.accessibilityHidden(true) }
+            // The badge never takes a tap meant for the button under it.
+            .overlay(alignment: .topTrailing) { badgeView.allowsHitTesting(false).accessibilityHidden(true) }
             .accessibilityLabel(label)
             .accessibilityValue(Self.accessibilityValue(badge))
     }
