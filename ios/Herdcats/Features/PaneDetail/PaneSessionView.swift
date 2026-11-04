@@ -69,6 +69,23 @@ struct PaneSessionView: View {
     /// lazily when Live input first becomes active for this pane.
     @State var liveQueue: PaneLiveInputQueue?
     @State var liveSession: PaneLiveInputSession?
+    /// Token for rail keys sent while Live typing is not ready. One per pane
+    /// and generation, so quick taps merge into one key command.
+    @State var oneShotSession: PaneLiveInputSession?
+    /// Short-lived key problem shown above the key row, such as a key Herdr
+    /// Core refused. Cleared after 6 s, on the next delivered key, or on tap.
+    @State var keyNotice: String?
+    /// Why keys are paused. Shown until the pane has been read again.
+    @State var pauseReason: String?
+    /// Failed reads while keys are paused; after one, the notice says so.
+    @State var resyncReadFailures = 0
+    /// Wait before the next Live start-up attempt: 4, 8, then 10 s.
+    @State var resyncBackoff = 2.0
+    /// Bumped by the notice's Retry button to restart the attempt at once.
+    @State var retryRequests = 0
+    /// Whether the pane has been read since input last stopped; one-shot
+    /// keys wait for that.
+    @State var freshRead = PaneFreshReadGate()
     /// Monotonic seconds (`systemUptime`) of the last Live acknowledgement
     /// and last rapid read, driving `PaneLiveRefreshPolicy`.
     @State var lastLiveAckAt: TimeInterval?
@@ -107,6 +124,46 @@ struct PaneSessionView: View {
     /// Monotonic count of delivered Live events; each increment is one
     /// per-event acknowledgement that drives rapid-refresh pacing and metrics.
     private var liveAcknowledgedCount: UInt64 { liveQueue?.acknowledgedCount ?? 0 }
+    private var liveFailureCount: UInt64 { liveQueue?.failureCount ?? 0 }
+    var inputQueueNeedsResync: Bool { liveQueueState == .needsResync }
+    var hasFreshPaneRead: Bool {
+        freshRead.hasFreshRead(generation: appModel.ownership.transportGeneration)
+    }
+
+    /// Where a tap on the key row goes: the Live session, a one-shot key
+    /// command while Live typing starts, or nowhere (with the reason).
+    var keyRoute: PaneKeyRoute {
+        PaneKeyRoute.resolve(
+            isOffline: appModel.isOffline,
+            isReadyForTerminalInput: appModel.isReadyForTerminalInput,
+            hasGeneration: appModel.ownership.transportGeneration != nil,
+            isSceneActive: appModel.isSceneActive,
+            isFocused: paneIsFocused,
+            isRecording: surfaceModel.surface == .voiceRecording,
+            queueState: liveQueueState,
+            liveInputEnabled: liveInputEnabled,
+            hasFreshRead: hasFreshPaneRead
+        )
+    }
+
+    private var keyRowNotice: PaneKeyNotice? {
+        PaneKeyNotice.resolve(
+            route: keyRoute,
+            pauseReason: pauseReason,
+            transient: keyNotice,
+            sessionError: sessionError,
+            resyncReadFailures: resyncReadFailures,
+            backoffAtCap: resyncBackoff >= 10,
+            showsTimeline: showsTimeline
+        )
+    }
+
+    /// The key or send message the notice line is showing, if any. Only this
+    /// is cleared by the 6 s timer or a tap, so an error nobody saw stays.
+    private var shownKeyMessage: String? {
+        guard paneIsFocused, !showsTimeline, keyRoute.sendsKeys else { return nil }
+        return keyNotice ?? sessionError
+    }
 
     private var outputPointSize: CGFloat {
         (PaneTextSizePreference(rawValue: paneTextSizeRaw) ?? .default).pointSize
@@ -201,6 +258,9 @@ struct PaneSessionView: View {
             && (!showsTimeline || TimelineComposePolicy.canCompose(identity:timeline.identity,paneId:pane.paneId,status:timeline.agentStatus,connected:AgentTimelineConnectionState(phase:appModel.phase,generation:appModel.ownership.transportGeneration).isReady))
             && !dictation.isBusy
             && !(attachment?.isUploading ?? false)
+            // In the terminal, Send waits for the key row's queue. The Timeline
+            // has no key row and sends through its own path.
+            && (showsTimeline || PaneComposeGate.allowsSend(queueState: liveQueueState, isDraining: isLiveDraining))
     }
 
     private func handleSend() {
@@ -368,6 +428,7 @@ struct PaneSessionView: View {
                 applyLiveModifierOutcome(liveModifierComposer.applyBaseKey(token))
             },
             onLiveModifier: { modifier in
+                noteKeySession()
                 applyLiveModifierOutcome(
                     liveModifierComposer.toggle(
                         {
@@ -382,7 +443,7 @@ struct PaneSessionView: View {
             onLiveEvent: { event in
                 if appModel.isCoreMode, case let .text(text) = event,
                    HerdrConnection.coreTypedKeys(text) == nil {
-                    sessionError = HerdrConnection.coreUntypeableMessage
+                    keyNotice = HerdrConnection.coreUntypeableMessage
                     // Disarm like the composer does for text it can't wrap, so a
                     // later key never inherits a stale Ctrl/Alt arm.
                     liveModifierComposer.reset()
@@ -411,6 +472,14 @@ struct PaneSessionView: View {
         bar.modelControl = showsTimeline && timeline.matchesLivePane(paneId: pane.paneId, agent: pane.agent, connection: AgentTimelineConnectionState(phase: appModel.phase, generation: appModel.ownership.transportGeneration)) ? timeline.modelControl : nil
         bar.composeFieldIdentifier = showsTimeline ? "timeline-compose-field" : "pane-compose-field"
         bar.composeSendIdentifier = showsTimeline ? "timeline-compose-send" : "pane-compose-send-button"
+        bar.keysEnabled = keyRoute.sendsKeys
+        bar.keyNotice = keyRowNotice
+        // The Timeline keeps Compose only; the key row belongs to the terminal.
+        bar.showsKeyRow = !showsTimeline
+        bar.onRetryKeys = { retryRequests += 1 }
+        bar.onDismissKeyNotice = {
+            if let shown = shownKeyMessage { dismissKeyMessage(shown) }
+        }
         return bar
     }
 
@@ -527,17 +596,29 @@ struct PaneSessionView: View {
                 }
             }
         .task(id: liveSessionTaskKey) {
-            var retryDelay = 2.0
+            // The key includes the queue's stop and the Retry count, so a new
+            // failure or a Retry tap starts again here instead of waiting out
+            // the current backoff.
+            resyncBackoff = 2
             while !Task.isCancelled && paneIsFocused && !appModel.isOffline && appModel.isSceneActive {
                 guard !liveInputEnabled else { return }
                 if liveSession == nil || liveQueueState == .needsResync {
                     await resumeLiveInput()
-                    retryDelay = liveInputEnabled ? 2 : min(retryDelay * 2, 10)
+                    guard !Task.isCancelled else { return }
+                    resyncBackoff = liveInputEnabled ? 2 : min(resyncBackoff * 2, 10)
                 }
                 do {
-                    try await Task.sleep(for: .seconds(liveInputEnabled ? 1 : retryDelay))
+                    try await Task.sleep(for: .seconds(liveInputEnabled ? 1 : resyncBackoff))
                 } catch { return }
             }
+        }
+        .task(id: shownKeyMessage) {
+            // A key notice, or a send error shown in the terminal's notice line,
+            // goes away on its own 6 s after it appeared. The Timeline keeps
+            // its own error text.
+            guard let shown = shownKeyMessage else { return }
+            do { try await Task.sleep(for: .seconds(6)) } catch { return }
+            dismissKeyMessage(shown)
         }
         .task(id: liveRefreshTaskKey) {
             await runLiveForegroundRefresh()
@@ -563,7 +644,23 @@ struct PaneSessionView: View {
             for _ in 0..<delta {
                 liveMetrics.noteAcknowledged()
             }
+            // One-shot keys are acknowledged by the same queue, so they start
+            // the same fast re-read as Live keys.
             lastLiveAckAt = ProcessInfo.processInfo.systemUptime
+            keyNotice = nil
+        }
+        .onChange(of: liveFailureCount) { _, _ in
+            switch liveQueue?.lastFailure {
+            case .uncertain:
+                pauseReason = PaneKeyNotice.mayNotHaveArrived
+            case let .coreRefusedKeys(keys):
+                // Nothing was pressed, so keys stay on; only say what happened.
+                keyNotice = PaneKeyNotice.coreRefusal(keys)
+            case .coreRefusedBatch:
+                keyNotice = PaneKeyNotice.coreRefusedBatch
+            case nil:
+                break
+            }
         }
         .onChange(of: isLiveDraining) { _, draining in
             // An ambiguous send is discarded. The session task acquires a

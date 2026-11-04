@@ -53,8 +53,10 @@ without the bridge.
 
 **Show Compose by Default** is enabled initially, so panes open with the compose
 field and keyboard ready. Turn it off in pane options or Settings → Pane to
-start with the Live toolbar. Compose supports spelling correction and keyboard
-suggestions; Live terminal input stays literal. Your saved preference is respected.
+start with the Live toolbar. The key row (Esc, Tab, ↑, Ctrl, Alt, Keys) also
+shows above Compose, and works while live typing is still starting. Compose
+supports spelling correction and keyboard suggestions; Live terminal input stays
+literal. Your saved preference is respected.
 
 [Tailscale](https://tailscale.com) is the recommended way to connect your phone
 and Herdr machine. Any network that can reach the SSH server also works.

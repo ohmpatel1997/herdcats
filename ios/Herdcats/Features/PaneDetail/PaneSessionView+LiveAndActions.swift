@@ -12,6 +12,10 @@ struct LiveSessionTaskKey: Equatable {
     let isSceneActive: Bool
     let liveInputEnabled: Bool
     let isFocused: Bool
+    /// The input queue stopped after a send that may not have arrived.
+    var needsResync = false
+    /// Retry taps on the key notice.
+    var retryRequests = 0
 }
 
 struct LiveRefreshTaskKey: Equatable {
@@ -49,7 +53,9 @@ extension PaneSessionView {
             isOffline: appModel.isOffline,
             isSceneActive: appModel.isSceneActive,
             liveInputEnabled: liveInputEnabled,
-            isFocused: paneIsFocused
+            isFocused: paneIsFocused,
+            needsResync: inputQueueNeedsResync,
+            retryRequests: retryRequests
         )
     }
 
@@ -77,7 +83,8 @@ extension PaneSessionView {
         let targetPaneId = pane.paneId
         guard !appModel.isOffline else { return }
         PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
-        resetLiveModifiers()
+        // Armed Ctrl/Alt survive a retry on the same pane and generation;
+        // `noteSession` below clears them only when either changes.
         do {
             let token = try await appModel.connection.beginPaneLiveInput(paneId: targetPaneId)
             var installed = false
@@ -89,52 +96,134 @@ extension PaneSessionView {
             guard !Task.isCancelled,
                   pane.paneId == targetPaneId,
                   !appModel.isOffline else { return }
-            await reload()
+            // One-shot keys can still be sent during this read. If one of them
+            // stops the queue meanwhile, this read can't clear that stop.
+            let stopsBeforeRead = inputQueue().stopCount
+            let outcome = await reload()
             updateSessionParsedOutput()
             guard !Task.isCancelled,
                   pane.paneId == targetPaneId,
                   !appModel.isOffline else { return }
-            guard session.errorMessage == nil else {
-                if session.errorMessage?.contains("Timed out") == true {
-                    liveMetrics.noteTimeout()
+            // Only a read whose text is now on screen counts. A disconnect
+            // shows no error, and an overtaken read's text was dropped.
+            guard outcome == .fresh else {
+                if outcome == .failed {
+                    if session.errorMessage?.contains("Timed out") == true {
+                        liveMetrics.noteTimeout()
+                    }
+                    noteResyncReadFailed()
                 }
                 return
             }
-            let queue = liveQueue ?? PaneLiveInputQueue(sender: appModel.connection)
-            if queue.state == .needsResync {
-                queue.noteResynced()
+            // The same queue is kept, so one-shot keys still waiting are
+            // delivered before any Live input.
+            let queue = inputQueue()
+            // The only way back from a stop: a successful fresh read that
+            // started after it. A newer stop needs a newer read; the session
+            // task restarts for it, because its key includes the stop.
+            if queue.state == .needsResync, !queue.noteResynced(stopsBeforeRead: stopsBeforeRead) {
+                return
             }
-            liveQueue = queue
+            pauseReason = nil
+            resyncReadFailures = 0
             liveSession = token
             installed = true
             liveModifierComposer.noteSession(token)
+            syncArmedModifiers()
         } catch {
             // Keep later input disabled until the recovery loop acquires a
             // fresh token; never retry an uncertain key.
             PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
+            noteResyncReadFailed()
         }
     }
 
-    /// Routes every Live pane mutation through the ordered queue. Controls
-    /// are disabled without a session token, and the token's pane is
-    /// re-checked so a stale view can never type into another pane. Only the
-    /// Live toolbar surface accepts live keys — the recording bar and
-    /// Compose bubble never enqueue terminal input.
+    /// While keys are paused, a failed attempt changes the notice from
+    /// "Checking the screen" to "Couldn't read the pane".
+    private func noteResyncReadFailed() {
+        // A cancelled attempt (Retry, focus or pane change) is not a failed read.
+        guard inputQueueNeedsResync || !hasFreshPaneRead, !Task.isCancelled else { return }
+        resyncReadFailures += 1
+    }
+
+    /// Clears the key or send message the notice line was showing.
+    func dismissKeyMessage(_ shown: String) {
+        if keyNotice == shown {
+            keyNotice = nil
+        } else if sessionError == shown {
+            sessionError = nil
+        }
+    }
+
+    /// The pane's one input queue, created on first use. Rail keys, Live or
+    /// one-shot, and Live typing all go through it, so they arrive in order.
+    func inputQueue() -> PaneLiveInputQueue {
+        if let liveQueue { return liveQueue }
+        let queue = PaneLiveInputQueue(sender: PaneInputSender(connection: appModel.connection))
+        liveQueue = queue
+        return queue
+    }
+
+    /// Turns every key off until the pane has been read again. Works before
+    /// any queue exists.
+    func pauseKeysForResync(reason: String) {
+        inputQueue().stopForResync()
+        pauseReason = reason
+        lastLiveAckAt = nil
+    }
+
+    /// One token per pane and generation, so quick taps merge into one
+    /// key command.
+    func oneShotToken(_ owned: ConnectionGeneration) -> PaneLiveInputSession {
+        if let oneShotSession, oneShotSession.paneId == pane.paneId, oneShotSession.generation == owned {
+            return oneShotSession
+        }
+        let token = PaneLiveInputSession(paneId: pane.paneId, generation: owned, kind: .oneShot)
+        oneShotSession = token
+        return token
+    }
+
+    /// Ties an armed Ctrl/Alt to this pane and generation before arming, so
+    /// Live starting on the same pane and generation keeps it armed.
+    func noteKeySession() {
+        if let liveSession {
+            liveModifierComposer.noteSession(liveSession)
+        } else if let owned = appModel.ownership.transportGeneration {
+            liveModifierComposer.noteSession(oneShotToken(owned))
+        }
+    }
+
+    /// Routes every pane input through the one ordered queue. Rail keys may
+    /// come from the Live toolbar or from the key row above Compose, on
+    /// purpose: that row works while Live typing is still starting. Typed text
+    /// still comes only from the Live keyboard, and the recording bar sends
+    /// nothing. While Live is ready, input uses the Live session, whose pane
+    /// is re-checked so a stale view can never type into another pane. Before
+    /// that, keys go out as one-shot key commands for the current generation.
+    /// After a send that may not have arrived, keys stay off until a fresh read.
     func sendLiveEvent(_ event: PaneLiveInputEvent) {
-        guard surfaceModel.isLiveKeyboardSurface,
-              let queue = liveQueue,
-              let session = liveSession,
-              session.paneId == pane.paneId,
-              !appModel.isOffline else { return }
-        guard queue.enqueue(event, session: session) else {
-            // Rejection means the queue is full or stopped. Discard the
-            // rejected key and backlog; the recovery loop reacquires a
-            // fresh session for later input. Nothing is replayed.
+        guard !showsTimeline,
+              PaneKeyRoute.accepts(event, surface: surfaceModel.surface),
+              event.isDeliverable else { return }
+        let token: PaneLiveInputSession
+        switch keyRoute {
+        case .live:
+            guard let session = liveSession, session.paneId == pane.paneId else { return }
+            token = session
+        case .oneShot:
+            guard case .keys = event, let owned = appModel.ownership.transportGeneration else { return }
+            token = oneShotToken(owned)
+        case .unavailable:
+            return
+        }
+        let queue = inputQueue()
+        guard queue.enqueue(event, session: token) else {
+            // The queue is full. Stop instead of carrying on without the
+            // dropped backlog: later keys could act on the wrong screen.
+            // Nothing is replayed.
             liveMetrics.noteDiscardedEvents(1)
             liveMetrics.noteAbandoned()
-            queue.abandonQueuedInput()
-            PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
-            lastLiveAckAt = nil
+            pauseKeysForResync(reason: PaneKeyNotice.tooManyKeys)
             return
         }
         liveMetrics.noteEnqueued(depth: queue.pendingCount)
@@ -146,9 +235,19 @@ extension PaneSessionView {
     func abandonLiveInput() {
         if let liveQueue {
             liveMetrics.noteAbandoned()
-            liveQueue.abandonQueuedInput()
+            // A key still on its way may fail with nobody listening. Then keys
+            // stay off until a fresh read, instead of coming back as if it
+            // had arrived.
+            let wasSending = liveQueue.isDraining
+            liveQueue.abandonAllInput()
+            if wasSending { pauseReason = PaneKeyNotice.mayNotHaveArrived }
         }
+        // The screen may go stale from here; one-shot keys wait for a new read.
+        freshRead.inputStopped()
         PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
+        oneShotSession = nil
+        // A paused queue stays paused; the next attempt starts its count again.
+        resyncReadFailures = 0
         lastLiveAckAt = nil
         lastLiveReadAt = nil
         resetLiveModifiers()
@@ -167,8 +266,13 @@ extension PaneSessionView {
             sendLiveEvent(event)
         case .unsupportedCommand:
             // ⌘ has no verified agent-TUI mapping; fail closed and say so.
-            sessionError = "Command (⌘) chords aren’t supported with this agent yet. Nothing was sent."
+            keyNotice = "Command (⌘) chords aren’t supported with this agent yet. Nothing was sent."
         }
+        syncArmedModifiers()
+    }
+
+    /// Mirrors the composer's armed modifiers in the key row.
+    func syncArmedModifiers() {
         armedLiveModifiers = Set(liveModifierComposer.armed.compactMap { modifier in
             switch modifier {
             case .control: return PaneLiveModifier.ctrl
@@ -413,8 +517,16 @@ extension PaneSessionView {
 
     // MARK: Data
 
-    func reload() async {
-        await session.reload(appModel.connection)
+    /// Reads the pane and records whether that read counts as fresh for
+    /// one-shot keys: it landed, and input hasn't stopped since it started.
+    @discardableResult
+    func reload() async -> PaneReadOutcome {
+        let start = freshRead.startRead(generation: appModel.ownership.transportGeneration)
+        let outcome = await session.reload(appModel.connection)
+        freshRead.finishRead(start, outcome: outcome)
+        // While keys are paused, only the Live start-up's own read resets this.
+        if outcome == .fresh, !inputQueueNeedsResync { resyncReadFailures = 0 }
+        return outcome
     }
 
     /// Focuses the agent/tab on the Mac so Herdr clears Done → Idle.

@@ -73,6 +73,43 @@ extension HerdrConnection {
         }
     }
 
+    /// Rail keys for one pane, sent in the pane's input lane. A one-shot token
+    /// sends a plain `pane send-keys` (TUI) or `terminal.keys` (Herdr Core) for
+    /// the generation captured when the key was tapped. A Live token is sent
+    /// only while it is still the active Live session; an expired one is
+    /// refused with `notConnected` and never sent as a plain command.
+    func sendPaneKeys(_ keys: [String], session: PaneLiveInputSession) async throws {
+        try requireGeneration(session.generation)
+        try await paneInput.run(paneId: session.paneId) {
+            try await self.paneSendRailKeysUnlocked(keys, session: session)
+        }
+    }
+
+    func paneSendRailKeysUnlocked(_ keys: [String], session: PaneLiveInputSession) async throws {
+        switch Self.railKeyPath(session: session, active: activeLiveSessions[session.paneId]) {
+        case .liveShell:
+            try await paneLiveSendKeysUnlocked(keys, session: session)
+        case .command:
+            try await paneSendKeysUnlocked(paneId: session.paneId, keys, owned: session.generation)
+            try requireGeneration(session.generation)
+        case .expired:
+            throw HerdrError.notConnected
+        }
+    }
+
+    enum RailKeyPath: Equatable, Sendable {
+        case liveShell
+        case command
+        case expired
+    }
+
+    static func railKeyPath(session: PaneLiveInputSession, active: PaneLiveInputSession?) -> RailKeyPath {
+        switch session.kind {
+        case .oneShot: .command
+        case .live: active == session ? .liveShell : .expired
+        }
+    }
+
     func paneSendKeysUnlocked(
         paneId: String,
         _ keys: [String],

@@ -152,6 +152,32 @@ struct PaneLiveModifierComposerTests {
         #expect(composer.armed == [.control])
     }
 
+    @Test func sameSessionRetryKeepsCtrlArmed() {
+        // Ctrl armed while Live typing was still starting (a one-shot token),
+        // then Live starts, then a retry installs another Live token: every
+        // token is for the same pane and generation, so Ctrl stays armed.
+        var composer = PaneLiveModifierComposer()
+        let generation = ConnectionGeneration(rawValue: 4)
+        composer.noteSession(PaneLiveInputSession(paneId: "w1:p1", generation: generation, kind: .oneShot))
+        _ = composer.toggle(.control)
+
+        composer.noteSession(PaneLiveInputSession(paneId: "w1:p1", generation: generation))
+        composer.noteSession(PaneLiveInputSession(paneId: "w1:p1", generation: generation))
+        #expect(composer.armed == [.control])
+        #expect(composer.applyBaseKey("esc") == .enqueue(.keys(["ctrl+esc"])))
+    }
+
+    @Test func newGenerationStillClearsCtrl() {
+        var composer = PaneLiveModifierComposer()
+        composer.noteSession(PaneLiveInputSession(
+            paneId: "w1:p1", generation: ConnectionGeneration(rawValue: 4), kind: .oneShot
+        ))
+        _ = composer.toggle(.control)
+
+        composer.noteSession(PaneLiveInputSession(paneId: "w1:p1", generation: ConnectionGeneration(rawValue: 5)))
+        #expect(composer.armed.isEmpty)
+    }
+
     @Test func resetClearsArmedModifier() {
         var composer = PaneLiveModifierComposer()
         _ = composer.toggle(.control)

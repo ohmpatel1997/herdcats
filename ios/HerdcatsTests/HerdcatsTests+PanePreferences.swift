@@ -401,6 +401,27 @@ struct PaneSessionStateTests {
         #expect(!state.isReading)
     }
 
+    @Test @MainActor func reloadReportsFreshOnlyForAReadThatLanded() async throws {
+        let state = try makeState()
+        #expect(await state.reload { "hello" } == .fresh)
+        // A disconnect shows no error message, but it is still not a fresh read.
+        #expect(await state.reload { throw HerdrError.notConnected } == .failed)
+
+        // A read overtaken by a newer one is dropped, so it isn't fresh either.
+        let gate = ExternallyReleasedWait<Void>()
+        let older = Task { @MainActor in
+            await state.reload {
+                try await gate.wait()
+                return "older"
+            }
+        }
+        try await waitUntil { state.isReading }
+        #expect(await state.reload { "newer" } == .fresh)
+        gate.release(())
+        #expect(await older.value == .superseded)
+        #expect(state.output == "newer")
+    }
+
     @Test func textViewRendersOnlyWhenRevisionOrFontChanges() {
         let font = UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
         let larger = UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)

@@ -432,3 +432,219 @@ func waitUntil(
         try await Task.sleep(for: .milliseconds(5))
     }
 }
+
+@Suite("Pane key queue")
+struct PaneKeyQueueTests {
+    private let generation = ConnectionGeneration(rawValue: 4)
+    private var oneShot: PaneLiveInputSession {
+        PaneLiveInputSession(paneId: "w1:p1", generation: generation, kind: .oneShot)
+    }
+
+    @Test
+    @MainActor
+    func oneShotFailureKeepsKeysOffUntilResynced() async throws {
+        let sender = RecordingLiveSender()
+        await sender.setFailAfterGateWith(HerdrError.notConnected)
+        let queue = PaneLiveInputQueue(sender: sender, maxPending: 8)
+        let token = oneShot
+
+        #expect(queue.enqueue(.keys(["down"]), session: token))
+        try await waitUntil { queue.state == .needsResync && !queue.isDraining }
+        #expect(queue.lastFailure == .uncertain)
+        #expect(queue.stopCount == 1)
+        #expect(!queue.enqueue(.keys(["enter"]), session: token))
+        let route = PaneKeyRoute.resolve(
+            isOffline: false, isReadyForTerminalInput: true, hasGeneration: true,
+            isSceneActive: true, isFocused: true, isRecording: false,
+            queueState: queue.state, liveInputEnabled: false, hasFreshRead: true
+        )
+        #expect(route == .unavailable(.resyncing))
+
+        // Only a fresh read brings keys back.
+        queue.noteResynced()
+        await sender.setFailAfterGateWith(nil)
+        #expect(queue.enqueue(.keys(["enter"]), session: token))
+        try await waitUntilLiveIdle(queue)
+        #expect(await sender.wire == ["keys:enter"])
+    }
+
+    @Test
+    @MainActor
+    func burstAcrossLiveHandoverArrivesInTapOrder() async throws {
+        let gate = ExternallyReleasedWait<Void>()
+        let sender = RecordingLiveSender(firstSendGate: gate)
+        let queue = PaneLiveInputQueue(sender: sender, maxPending: 8)
+        let token = oneShot
+        let live = PaneLiveInputSession(paneId: "w1:p1", generation: generation)
+
+        #expect(queue.enqueue(.keys(["down"]), session: token))
+        try await waitUntil { queue.isDraining && queue.pendingCount == 0 }
+        #expect(queue.enqueue(.keys(["down"]), session: token))
+        #expect(queue.enqueue(.keys(["right"]), session: token))
+        // Live starts here: its input queues behind the one-shot keys.
+        #expect(queue.enqueue(.keys(["enter"]), session: live))
+        #expect(queue.enqueue(.text("a"), session: live))
+        gate.release(())
+        try await waitUntilLiveIdle(queue)
+
+        // Same-token taps merge; one-shot and Live batches never do.
+        #expect(await sender.wire == ["keys:down", "keys:down,right", "keys:enter", "text:a"])
+        #expect(queue.acknowledgedCount == 5)
+    }
+
+    @Test
+    @MainActor
+    func fullQueueStopsForResyncInsteadOfDiscarding() async throws {
+        let gate = ExternallyReleasedWait<Void>()
+        let sender = RecordingLiveSender(firstSendGate: gate)
+        let queue = PaneLiveInputQueue(sender: sender, maxPending: 1)
+        let token = oneShot
+
+        #expect(queue.enqueue(.keys(["down"]), session: token))
+        try await waitUntil { queue.isDraining && queue.pendingCount == 0 }
+        #expect(queue.enqueue(.keys(["enter"]), session: token))
+        // A different kind can't merge, and the one queued slot is taken.
+        #expect(!queue.enqueue(.text("x"), session: token))
+        queue.stopForResync()
+        #expect(queue.state == .needsResync)
+        #expect(queue.pendingCount == 0)
+
+        gate.release(())
+        try await waitUntil { !queue.isDraining }
+        #expect(await sender.wire == ["keys:down"])
+        #expect(queue.state == .needsResync)
+        #expect(!queue.enqueue(.keys(["enter"]), session: token))
+    }
+
+    @Test
+    @MainActor
+    func abandonWithAKeyInFlightKeepsKeysOffAfterReconnect() async throws {
+        // The user taps a key, and the link drops while it is being sent. The
+        // send then fails with nobody listening. After the reconnect, and even
+        // after an ordinary poll read, keys stay off until the Live start-up's
+        // fresh read clears the stop.
+        let gate = ExternallyReleasedWait<Void>()
+        let sender = RecordingLiveSender(firstSendGate: gate)
+        await sender.setFailAfterGateWith(HerdrError.notConnected)
+        let queue = PaneLiveInputQueue(sender: sender, maxPending: 8)
+        var reads = PaneFreshReadGate()
+        let generation1 = ConnectionGeneration(rawValue: 1)
+        let generation2 = ConnectionGeneration(rawValue: 2)
+        reads.finishRead(reads.startRead(generation: generation1), outcome: .fresh)
+        let token = PaneLiveInputSession(paneId: "w1:p1", generation: generation1, kind: .oneShot)
+
+        #expect(queue.enqueue(.keys(["down"]), session: token))
+        try await waitUntil { queue.isDraining && queue.pendingCount == 0 }
+        queue.abandonAllInput()   // offline
+        reads.inputStopped()
+        gate.release(())
+        try await waitUntil { !queue.isDraining }
+
+        #expect(queue.state == .needsResync)
+        #expect(!queue.enqueue(.keys(["enter"]), session: token))
+        reads.finishRead(reads.startRead(generation: generation2), outcome: .fresh)   // a poll read after reconnect
+        let afterReconnect = PaneKeyRoute.resolve(
+            isOffline: false, isReadyForTerminalInput: true, hasGeneration: true,
+            isSceneActive: true, isFocused: true, isRecording: false,
+            queueState: queue.state, liveInputEnabled: false,
+            hasFreshRead: reads.hasFreshRead(generation: generation2)
+        )
+        #expect(afterReconnect == .unavailable(.resyncing))
+
+        #expect(queue.noteResynced(stopsBeforeRead: queue.stopCount))
+        #expect(queue.state == .ready)
+    }
+
+    @Test
+    @MainActor
+    func abandonWhileIdleKeepsTheQueueReady() {
+        let queue = PaneLiveInputQueue(sender: RecordingLiveSender())
+        queue.abandonAllInput()
+        #expect(queue.state == .ready)
+        #expect(queue.stopCount == 0)
+    }
+
+    @Test
+    @MainActor
+    func aStopDuringTheReadKeepsTheQueueStopped() {
+        let queue = PaneLiveInputQueue(sender: RecordingLiveSender())
+        // Ready when the read starts, stopped before it ends.
+        let readyAtStart = queue.stopCount
+        queue.stopForResync()
+        #expect(!queue.noteResynced(stopsBeforeRead: readyAtStart))
+        #expect(queue.state == .needsResync)
+
+        // Stopped when the read starts, stopped again before it ends.
+        let stoppedAtStart = queue.stopCount
+        queue.stopForResync()
+        #expect(!queue.noteResynced(stopsBeforeRead: stoppedAtStart))
+        #expect(queue.state == .needsResync)
+
+        // No stop during the read: it clears the stop.
+        #expect(queue.noteResynced(stopsBeforeRead: queue.stopCount))
+        #expect(queue.state == .ready)
+    }
+
+    @Test
+    @MainActor
+    func stopForResyncWorksOnAnIdleQueue() {
+        let queue = PaneLiveInputQueue(sender: RecordingLiveSender())
+        queue.stopForResync()
+        #expect(queue.state == .needsResync)
+        #expect(queue.stopCount == 1)
+        #expect(!queue.isDraining)
+        #expect(!queue.enqueue(.keys(["esc"]), session: oneShot))
+        queue.noteResynced()
+        #expect(queue.state == .ready)
+    }
+
+    @Test
+    @MainActor
+    func coreRefusedBatchDropsTheRestWithoutResync() async throws {
+        let gate = ExternallyReleasedWait<Void>()
+        let sender = RecordingLiveSender(firstSendGate: gate)
+        await sender.setFailAfterGateWith(CoreRPCError.remote(
+            code: -32602, kind: "invalid_params", message: "unknown key \"plus\"", hint: nil
+        ))
+        let queue = PaneLiveInputQueue(sender: sender, maxPending: 8)
+        let token = oneShot
+        let live = PaneLiveInputSession(paneId: "w1:p1", generation: generation)
+
+        #expect(queue.enqueue(.keys(["ctrl+plus"]), session: token))
+        try await waitUntil { queue.isDraining && queue.pendingCount == 0 }
+        #expect(queue.enqueue(.keys(["enter"]), session: live))
+        gate.release(())
+        try await waitUntilLiveIdle(queue)
+
+        // Core pressed nothing, so keys stay on, but nothing after it is sent.
+        #expect(queue.state == .ready)
+        #expect(queue.lastFailure == .coreRefusedKeys(["ctrl+plus"]))
+        #expect(queue.failureCount == 1)
+        #expect(queue.stopCount == 0)
+        #expect(await sender.attemptCount == 1)
+        #expect(await sender.wire.isEmpty)
+        #expect(queue.acknowledgedCount == 0)
+
+        await sender.setFailAfterGateWith(nil)
+        #expect(queue.enqueue(.keys(["esc"]), session: live))
+        try await waitUntilLiveIdle(queue)
+        #expect(await sender.wire == ["keys:esc"])
+    }
+
+    @Test
+    func staleGenerationRailKeysAreRefusedBeforeTheLane() async {
+        let connection = HerdrConnection()
+        for kind in [PaneLiveInputSession.Kind.oneShot, .live] {
+            let session = PaneLiveInputSession(
+                paneId: "w1:p1", generation: ConnectionGeneration(rawValue: 999), kind: kind
+            )
+            do {
+                try await connection.sendPaneKeys(["esc"], session: session)
+                Issue.record("A stale generation must not send keys")
+            } catch {
+                #expect(error as? HerdrError == .notConnected)
+            }
+            #expect(await connection.paneInput.isBusy("w1:p1") == false)
+        }
+    }
+}

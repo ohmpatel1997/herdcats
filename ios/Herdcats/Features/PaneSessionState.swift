@@ -1,6 +1,14 @@
 import Foundation
 import Observation
 
+/// How a pane read ended. Only `.fresh` means the output now shows the pane.
+enum PaneReadOutcome: Equatable, Sendable {
+    case fresh
+    /// A newer read started meanwhile, so this one's text was dropped.
+    case superseded
+    case failed
+}
+
 /// Testable session state for a single pane: output, send, and
 /// generation-safe reloads. UI binds to this from `PaneSessionView`.
 @MainActor
@@ -62,14 +70,18 @@ final class PaneSessionState {
         output = text
     }
 
-    func reload(_ connection: HerdrConnection) async {
+    @discardableResult
+    func reload(_ connection: HerdrConnection) async -> PaneReadOutcome {
         await reload { try await connection.paneReadText(paneId: self.pane.paneId) }
     }
 
     /// Reloads pane text using a custom reader (test seam). Only marks
     /// `isLoading = true` when output is initially empty so non-empty views
-    /// avoid two redraws per read.
-    func reload(read: () async throws -> String) async {
+    /// avoid two redraws per read. Returns `.fresh` only when this read's
+    /// text is now on screen: a read overtaken by a newer one, or one that
+    /// failed (including a disconnect, which shows no error), is not fresh.
+    @discardableResult
+    func reload(read: () async throws -> String) async -> PaneReadOutcome {
         reloadGeneration += 1
         let generation = reloadGeneration
         isReading = true
@@ -83,15 +95,17 @@ final class PaneSessionState {
         }
         do {
             let text = try await read()
-            guard reloadGeneration == generation else { return }
+            guard reloadGeneration == generation else { return .superseded }
             applyRead(text)
             errorMessage = nil
+            return .fresh
         } catch {
-            guard reloadGeneration == generation else { return }
+            guard reloadGeneration == generation else { return .superseded }
             let message = HerdrConnection.friendlyMessage(for: error)
             if !HerdrConnection.isDisconnectionOrTransitionMessage(message) {
                 errorMessage = message
             }
+            return .failed
         }
     }
 

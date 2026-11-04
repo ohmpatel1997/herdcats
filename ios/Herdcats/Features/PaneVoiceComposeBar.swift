@@ -186,7 +186,18 @@ struct PaneVoiceComposeBar: View {
     @FocusState.Binding var isComposeFieldFocused: Bool
 
     // Live row state & modifier routing to Pi/Cursor's PaneLiveModifierComposer
+    /// Gates only the hidden Live keyboard capture, which types text.
     var isLiveEnabled: Bool
+    /// Gates the key row and Keys drawer. Keys work before Live typing is
+    /// ready, so this can be true while `isLiveEnabled` is false.
+    var keysEnabled = true
+    /// The line above the key row: why keys are off, or the last key problem.
+    var keyNotice: PaneKeyNotice?
+    /// Shows the key row above Compose too. False in the Timeline, which keeps
+    /// Compose only (and draws its own error text).
+    var showsKeyRow = false
+    var onRetryKeys: () -> Void = {}
+    var onDismissKeyNotice: () -> Void = {}
     @Binding var armedModifiers: Set<PaneLiveModifier>
     var composeFieldIdentifier = "pane-compose-field"
     var composeSendIdentifier = "pane-compose-send-button"
@@ -290,8 +301,13 @@ struct PaneVoiceComposeBar: View {
                 recordingBar
                     .transition(.opacity)
             case .compose:
-                composeBar
-                    .transition(.opacity)
+                VStack(spacing: 8) {
+                    // Same keys as the Live toolbar, so Esc, Tab and arrows
+                    // work without leaving Compose. The draft is untouched.
+                    if showsKeyRow { keyStack(trailing: false) }
+                    composeBar
+                }
+                .transition(.opacity)
             }
         }
         .padding(.horizontal, 12)
@@ -309,10 +325,12 @@ struct PaneVoiceComposeBar: View {
             )
         }
         .animation(.snappy(duration: 0.22), value: mode)
-        .onChange(of: mode) { _, newMode in
-            if newMode != .live { closeLiveMenus() }
+        .onChange(of: showsKeyStack) { _, shown in
+            // Menus stay open between Live and Compose, which both show the
+            // key row; they close when the row goes away (recording, Timeline).
+            if !shown { closeLiveMenus() }
         }
-        .onChange(of: isLiveEnabled) { _, enabled in
+        .onChange(of: keysEnabled) { _, enabled in
             if !enabled { closeLiveMenus() }
         }
         .accessibilityElement(children: .contain)
@@ -329,6 +347,19 @@ struct PaneVoiceComposeBar: View {
 
     /// Fixed rail; extra keys expand above it without shifting rail positions.
     private var liveBar: some View {
+        keyStack(trailing: true)
+    }
+
+    /// True while the key row is on screen: always in Live, and above Compose
+    /// outside the Timeline.
+    private var showsKeyStack: Bool {
+        mode == .live || (mode == .compose && showsKeyRow)
+    }
+
+    /// The Keys drawer or arrow row, the notice line, then the rail. Live
+    /// adds Voice and Compose at the trailing end; above Compose the rail is
+    /// shorter and has keys only.
+    private func keyStack(trailing: Bool) -> some View {
         VStack(spacing: 8) {
             if isKeysDrawerOpen { keysDrawer }
             if isArrowRowOpen {
@@ -338,36 +369,68 @@ struct PaneVoiceComposeBar: View {
                     .modifier(PaneInputGlassSurface(cornerRadius: DesignSystem.CornerRadius.lg))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            liveRail
+            noticeLine
+            keyRail(trailing: trailing)
         }
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var liveRail: some View {
-        HStack(spacing: 0) {
-            liveKeyButton("Esc", style: .destructive) {
+    /// Why keys are off, or the last key or send problem. Tapping it clears a
+    /// passing message; Retry appears once automatic retries have slowed down.
+    @ViewBuilder
+    private var noticeLine: some View {
+        if let keyNotice {
+            HStack(spacing: 8) {
+                Text(keyNotice.text)
+                    .font(.jost(.caption))
+                    .foregroundStyle(Theme.textMuted)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if keyNotice.offersRetry {
+                    Button("Retry", action: onRetryKeys)
+                        .buttonStyle(.herdrSecondary(fullWidth: false))
+                        .accessibilityIdentifier("pane-key-retry")
+                }
+            }
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
+            .onTapGesture { onDismissKeyNotice() }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("pane-key-notice")
+        }
+    }
+
+    /// Text that explains a disabled key to VoiceOver.
+    private var disabledKeyHint: String {
+        keysEnabled ? "" : (keyNotice?.text ?? "")
+    }
+
+    private func keyRail(trailing: Bool) -> some View {
+        let height: CGFloat = trailing ? 42 : 36
+        return HStack(spacing: 0) {
+            liveKeyButton("Esc", style: .destructive, height: height) {
                 sendLiveKey("esc")
             }
             .accessibilityLabel("Send Escape")
             .accessibilityIdentifier("pane-live-key-esc")
 
-            liveKeyButton("Tab") {
+            liveKeyButton("Tab", height: height) {
                 sendLiveKey("tab")
             }
             .accessibilityLabel("Send Tab")
             .accessibilityIdentifier("pane-live-key-tab")
 
-            arrowButton
+            arrowButton(height: height)
 
-            liveModifierButton("Ctrl", modifier: .ctrl)
+            liveModifierButton("Ctrl", modifier: .ctrl, height: height)
                 .accessibilityLabel("Control modifier")
                 .accessibilityIdentifier("pane-live-key-ctrl")
 
-            liveModifierButton("Alt", modifier: .alt)
+            liveModifierButton("Alt", modifier: .alt, height: height)
                 .accessibilityLabel("Alt modifier, Option on Mac")
                 .accessibilityIdentifier("pane-live-key-alt")
 
-            liveKeyButton("Keys", isSelected: isKeysDrawerOpen) {
+            liveKeyButton("Keys", isSelected: isKeysDrawerOpen, height: height) {
                 isKeysDrawerOpen.toggle()
                 isArrowRowOpen = false
             }
@@ -388,45 +451,50 @@ struct PaneVoiceComposeBar: View {
             .accessibilityAddTraits(isKeysDrawerOpen ? .isSelected : [])
             .accessibilityIdentifier("pane-live-key-extra")
 
-            liveDivider
+            if trailing {
+                liveDivider
 
-            Button {
-                HapticFeedback.impact(.light)
-                onStartVoice()
-            } label: {
-                Image(systemName: "mic.fill")
-                    .font(.jost(16, weight: .semibold))
-                    .foregroundStyle(Color.primary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 42)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Start voice recording")
-            .accessibilityIdentifier("pane-live-voice-button")
+                Button {
+                    HapticFeedback.impact(.light)
+                    onStartVoice()
+                } label: {
+                    Image(systemName: "mic.fill")
+                        .font(.jost(16, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: height)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Start voice recording")
+                .accessibilityIdentifier("pane-live-voice-button")
 
-            // The keyboard icon opens an editable Compose draft. A tap on pane
-            // output is the separate gesture for direct terminal typing.
-            Button {
-                HapticFeedback.impact(.light)
-                onOpenCompose()
-            } label: {
-                Image(systemName: "keyboard")
-                    .font(.jost(16, weight: .semibold))
-                    .foregroundStyle(Color.primary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 42)
+                // The keyboard icon opens an editable Compose draft. A tap on pane
+                // output is the separate gesture for direct terminal typing.
+                Button {
+                    HapticFeedback.impact(.light)
+                    onOpenCompose()
+                } label: {
+                    Image(systemName: "keyboard")
+                        .font(.jost(16, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: height)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Compose message")
+                .accessibilityIdentifier("pane-live-keyboard-button")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Compose message")
-            .accessibilityIdentifier("pane-live-keyboard-button")
         }
-        .frame(height: 42)
+        .frame(height: height)
+        // Each key is about 30 pt wide, so keep labels readable at large text
+        // sizes; the large content viewer shows a key's label on long press.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .modifier(PaneInputGlassSurface(cornerRadius: DesignSystem.CornerRadius.lg))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pane-live-bar")
     }
 
-    private var arrowButton: some View {
+    private func arrowButton(height: CGFloat) -> some View {
         Button {
             HapticFeedback.impact(.light)
             sendLiveKey("up")
@@ -435,18 +503,18 @@ struct PaneVoiceComposeBar: View {
                 .font(.jost(.caption, weight: .semibold).monospaced())
                 .foregroundStyle(Color.primary)
                 .frame(maxWidth: .infinity)
-                .frame(height: 42)
+                .frame(height: height)
         }
         .buttonStyle(
-            PaneTapOrLongPressStyle(isEnabled: isLiveEnabled) {
+            PaneTapOrLongPressStyle(isEnabled: keysEnabled) {
                 HapticFeedback.impact(.light)
                 isArrowRowOpen = true
             isKeysDrawerOpen = false
         })
-        .disabled(!isLiveEnabled)
-        .opacity(isLiveEnabled ? 1 : 0.45)
+        .disabled(!keysEnabled)
+        .opacity(keysEnabled ? 1 : 0.45)
         .accessibilityLabel("Up arrow")
-        .accessibilityHint("Long press for all arrow keys")
+        .accessibilityHint(keysEnabled ? "Long press for all arrow keys" : disabledKeyHint)
         .accessibilityIdentifier("pane-live-key-up")
     }
 
@@ -504,8 +572,9 @@ struct PaneVoiceComposeBar: View {
                 .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .disabled(!isLiveEnabled)
+        .disabled(!keysEnabled)
         .accessibilityLabel("Send \(key.label)")
+        .accessibilityHint(disabledKeyHint)
         .accessibilityIdentifier("pane-live-extra-key-\(key.token)")
     }
 
@@ -535,6 +604,7 @@ struct PaneVoiceComposeBar: View {
         _ title: String,
         style: LiveKeyStyle = .plain,
         isSelected: Bool = false,
+        height: CGFloat = 42,
         action: @escaping () -> Void
     ) -> some View {
         Button {
@@ -547,22 +617,25 @@ struct PaneVoiceComposeBar: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity)
-                .frame(height: 42)
+                .frame(height: height)
                 .background(isSelected ? Theme.accent.opacity(0.16) : Color.clear)
         }
         .buttonStyle(.plain)
-        .disabled(!isLiveEnabled)
-        .opacity(isLiveEnabled ? 1 : 0.45)
+        .disabled(!keysEnabled)
+        .opacity(keysEnabled ? 1 : 0.45)
+        .accessibilityShowsLargeContentViewer()
+        .accessibilityHint(disabledKeyHint)
     }
 
     private func liveModifierButton(
         _ title: String,
         modifier: PaneLiveModifier,
         isEnabled: Bool = true,
+        height: CGFloat = 42,
         accessibilityHint: String? = nil
     ) -> some View {
         let isArmed = armedModifiers.contains(modifier)
-        let effectiveEnabled = isLiveEnabled && isEnabled
+        let effectiveEnabled = keysEnabled && isEnabled
         return Button {
             HapticFeedback.impact(.light)
             if let onLiveModifier {
@@ -581,15 +654,16 @@ struct PaneVoiceComposeBar: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity)
-                .frame(height: 42)
+                .frame(height: height)
                 .background(isArmed ? Theme.accent.opacity(0.16) : Color.clear)
         }
         .buttonStyle(.plain)
         .disabled(!effectiveEnabled)
         .opacity(effectiveEnabled ? 1 : 0.45)
+        .accessibilityShowsLargeContentViewer()
         .accessibilityAddTraits(isArmed ? .isSelected : [])
         .accessibilityValue(isArmed ? "Armed for next key" : "Off")
-        .accessibilityHint(accessibilityHint ?? "")
+        .accessibilityHint(keysEnabled ? (accessibilityHint ?? "") : disabledKeyHint)
     }
 
     // MARK: - 2. Recording Mode Bar
