@@ -14,6 +14,7 @@ struct CredentialMigrationTests {
     private struct PendingFixture: Codable {
         let sourceAccount: String
         let entry: RecentConnection
+        var destinationAccount: String? = nil
     }
 
     func withLegacy(
@@ -161,7 +162,7 @@ struct CredentialMigrationTests {
             let entry = RecentConnection(
                 host: "legacy.example", port: 22, username: "alice", authMode: "password", remember: true)
             defaults.set(
-                try JSONEncoder().encode(PendingFixture(sourceAccount: sourceAccount, entry: entry)), forKey: pendingKey
+                try JSONEncoder().encode(PendingFixture(sourceAccount: sourceAccount, entry: entry, destinationAccount: entry.secretAccount)), forKey: pendingKey
             )
             keychain.items[entry.secretAccount] = secret
             keychain.onDelete = { _ in #expect(defaults.data(forKey: RecentConnectionStore.storageKey) != nil) }
@@ -189,6 +190,24 @@ struct CredentialMigrationTests {
             #expect(keychain.addedAccounts.isEmpty)
             #expect(keychain.items.count == 1)
             #expect(defaults.data(forKey: pendingKey) == nil)
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func oldPendingMarkerResumesItsOriginalDestinationAfterUpgrade(committed: Bool) throws {
+        try withLegacy { defaults, keychain in
+            let entry = RecentConnection(host: "legacy.example", port: 22, username: "alice", authMode: "password", remember: true)
+            // Previous versions recorded only these two fields and copied into the shared profile slot.
+            defaults.set(try JSONEncoder().encode(PendingFixture(sourceAccount: sourceAccount, entry: entry)), forKey: pendingKey)
+            keychain.items[entry.legacySecretAccount] = secret
+            if committed { defaults.set(try JSONEncoder().encode([entry]), forKey: RecentConnectionStore.storageKey) }
+            #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain) == [entry])
+            #expect(keychain.items[sourceAccount] == nil)
+            #expect(keychain.addedAccounts.isEmpty)
+            #expect(defaults.data(forKey: pendingKey) == nil)
+            #expect(try ConnectionSignIn.load(entry, using: keychain).secret == "synthetic-legacy-secret")
+            try RecentConnectionStore.remove(entry, defaults: defaults, using: keychain)
+            #expect(keychain.items.isEmpty)
         }
     }
 

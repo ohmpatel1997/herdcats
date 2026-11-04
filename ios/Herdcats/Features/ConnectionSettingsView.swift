@@ -27,6 +27,27 @@ struct ConnectionSettingsView: View {
     @State var keyPEM = ""
     @State var keyPassphrase = ""
     @State var rememberPassphrase = false
+    @State var passwordWasEdited = false
+    @State var privateKeyWasEdited = false
+    @State var passphraseWasEdited = false
+    @State var rememberWasEdited = false
+    private let loadedPrivateKey: String?
+
+    var passwordInput: Binding<String> {
+        Binding(get: { password }, set: { password = $0; passwordWasEdited = true })
+    }
+    var privateKeyInput: Binding<String> {
+        Binding(get: { keyPEM }, set: { keyPEM = $0; privateKeyWasEdited = true })
+    }
+    var passphraseInput: Binding<String> {
+        Binding(get: { keyPassphrase }, set: { keyPassphrase = $0; passphraseWasEdited = true })
+    }
+    var rememberPassphraseInput: Binding<Bool> {
+        Binding(get: { rememberPassphrase }, set: { rememberPassphrase = $0; passphraseWasEdited = true })
+    }
+    var rememberInput: Binding<Bool> {
+        Binding(get: { remember }, set: { remember = $0; rememberWasEdited = true })
+    }
 
     var keyIsEncrypted: Bool { (try? OpenSSHEd25519.isEncrypted(pem: keyPEM)) == true }
     @State var showPassword = false
@@ -93,15 +114,18 @@ struct ConnectionSettingsView: View {
         let runtimes = RecentConnectionStore.savedRuntimes(of: connection, in: RecentConnectionStore.snapshot(defaults: defaults))
         _backend = State(initialValue: connection.host.isEmpty || runtimes.count > 1 ? nil : connection.backend)
         _remember = State(initialValue: connection.remember)
+        var loadedPrivateKey: String?
         do {
-            let loaded = try ConnectionSignIn.load(connection, using: keychain, readOnly: isReplay)
-            _password = State(initialValue: connection.authMode == "password" ? loaded.secret : "")
-            _keyPEM = State(initialValue: connection.authMode == "privateKey" ? loaded.secret : "")
+            let loaded = try ConnectionSignIn.load(connection, using: keychain, readOnly: isReplay, includingInactiveCredentials: true)
+            _password = State(initialValue: connection.authMode == "privateKey" ? loaded.otherSecret ?? "" : loaded.secret)
+            loadedPrivateKey = connection.authMode == "privateKey" ? loaded.secret : loaded.otherSecret ?? ""
+            _keyPEM = State(initialValue: loadedPrivateKey ?? "")
             _keyPassphrase = State(initialValue: loaded.passphrase)
             _rememberPassphrase = State(initialValue: loaded.savePassphrase)
         } catch {
             _credentialLoadError = State(initialValue: error.localizedDescription)
         }
+        self.loadedPrivateKey = loadedPrivateKey
     }
 
     enum AuthMode: String, CaseIterable, Identifiable {
@@ -225,15 +249,6 @@ struct ConnectionSettingsView: View {
         .sheet(isPresented: $showingSetupGuide) {
             HerdrSetupGuideView(backend: backend ?? .tui)
         }
-        .onChange(of: destination) { old, new in
-            guard old.host.lowercased() != new.host.lowercased()
-                || old.port != new.port || old.username != new.username else { return }
-            // Destination changes require fresh, intentional credential entry.
-            password = ""
-            keyPEM = ""
-            keyPassphrase = ""
-            rememberPassphrase = false
-        }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isConnecting)
@@ -281,6 +296,7 @@ struct ConnectionSettingsView: View {
             guard let url = urls.first else { return }
             do {
                 keyPEM = try ConnectionSignIn.importPrivateKey(from: url)
+                privateKeyWasEdited = true
                 showKey = false
             } catch {
                 importErrorMessage = error.localizedDescription
@@ -317,8 +333,16 @@ struct ConnectionSettingsView: View {
                 entry.lastConnectedAt = sibling.lastConnectedAt
             }
         }
+        let inactiveSecret = authMode == .password ? keyPEM : password
+        // A new form can resolve to a saved profile it never loaded. Its empty
+        // inactive field must not clear that profile's credential or passphrase.
+        let inactiveWasEdited = authMode == .password ? privateKeyWasEdited : passwordWasEdited
+        let editsInactiveSecret = editing || entry.id == original.id || !inactiveSecret.isEmpty || inactiveWasEdited
         return ConnectionSignIn(entry: entry, secret: authMode == .password ? password : keyPEM,
-            passphrase: keyPassphrase, savePassphrase: rememberPassphrase, detectsBackend: backend == nil)
+            passphrase: keyPassphrase, savePassphrase: rememberPassphrase, detectsBackend: backend == nil,
+            otherSecret: editsInactiveSecret ? inactiveSecret : nil,
+            credentialEdits: .init(ownerID: original.id, password: passwordWasEdited, privateKey: privateKeyWasEdited,
+                passphrase: passphraseWasEdited, remember: rememberWasEdited, passphraseKey: loadedPrivateKey))
     }
 
     var nameWasEdited: Bool { name != (original.name ?? "") }

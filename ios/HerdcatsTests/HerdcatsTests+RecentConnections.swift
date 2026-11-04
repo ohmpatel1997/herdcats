@@ -240,7 +240,8 @@ struct RecentConnectionTests {
             remember: false, in: [second, first]
         )
         #expect(updated.id == first.id)
-        #expect(updated.secretAccount == first.secretAccount)
+        #expect(updated.legacySecretAccount == first.legacySecretAccount)
+        #expect(updated.secretAccount != first.secretAccount)
         #expect(updated.authMode == "privateKey")
         #expect(!updated.remember)
         let entries = try RecentConnectionStore.record(updated, in: [second, first], defaults: defaults)
@@ -268,18 +269,17 @@ struct RecentConnectionTests {
             host: "server.local", port: 22, username: "bob", authMode: "password", remember: true)
         _ = try RecentConnectionStore.record(first, in: [second], defaults: defaults)
         for entry in [first, second] {
-            try KeychainStore.save("secret", account: entry.secretAccount, using: keychain)
-            try KeychainStore.save("phrase", account: entry.secretAccount + ".passphrase", using: keychain)
+            for account in entry.credentialAccounts {
+                try KeychainStore.save("synthetic-secret", account: account, using: keychain)
+            }
         }
 
         let remaining = try RecentConnectionStore.remove(first, defaults: defaults, using: keychain)
 
         #expect(remaining == [second])
         #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain) == [second])
-        #expect(keychain.items[first.secretAccount] == nil)
-        #expect(keychain.items[first.secretAccount + ".passphrase"] == nil)
-        #expect(keychain.items[second.secretAccount] != nil)
-        #expect(keychain.items[second.secretAccount + ".passphrase"] != nil)
+        for account in first.credentialAccounts { #expect(keychain.items[account] == nil) }
+        for account in second.credentialAccounts { #expect(keychain.items[account] != nil) }
     }
 
     @Test func removeOfUnknownConnectionLeavesOthersAndToleratesMissingSecrets() throws {
@@ -439,6 +439,129 @@ final class MigrationTestDefaults: UserDefaults, @unchecked Sendable {
 struct SavedConnectionWorkflowTests {
     let entry = RecentConnection(host: "mac.local", port: 22, username: "alice", authMode: "password", remember: true)
 
+    @Test func destinationEditWriteFailurePreservesSavedCredentials() throws {
+        let suite = "DestinationWriteFailure.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        try ConnectionSignIn(entry: entry, secret: "saved-password").persist(defaults: defaults, using: keychain)
+        var edited = entry
+        edited.username = "bob"
+        keychain.nextAddStatus = errSecInteractionNotAllowed
+        #expect(throws: KeychainStore.StoreError.self) {
+            try ConnectionSignIn(entry: edited, secret: "replacement").persist(defaults: defaults, using: keychain, connected: false)
+        }
+        #expect(try ConnectionSignIn.load(entry, using: keychain).secret == "saved-password")
+        #expect(RecentConnectionStore.snapshot(defaults: defaults).first?.username == "alice")
+    }
+
+    @MainActor @Test func authenticationChangesPreserveBothSavedCredentials() throws {
+        let suite = "AuthenticationEdits.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        try ConnectionSignIn(entry: entry, secret: "saved-password").persist(defaults: defaults, using: keychain)
+        var keyed = entry
+        keyed.authMode = "privateKey"
+        try ConnectionSignIn(entry: keyed, secret: "synthetic-private-key").persist(defaults: defaults, using: keychain, connected: false)
+        // Reopening must hydrate the inactive field too, without treating the key as a password.
+        let keyForm = ConnectionSettingsView(connection: keyed, defaults: defaults, using: keychain)
+        #expect(keyForm.password == "saved-password")
+        #expect(keyForm.keyPEM == "synthetic-private-key")
+        #expect(try ConnectionSignIn.load(entry, using: keychain).secret == "saved-password")
+        try ConnectionSignIn(entry: entry, secret: "replacement-password").persist(defaults: defaults, using: keychain, connected: false)
+        #expect(try ConnectionSignIn.load(keyed, using: keychain).secret == "synthetic-private-key")
+    }
+
+    @Test func explicitClearingRemovesOnlyTheSelectedCredential() throws {
+        let suite = "CredentialClearing.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        var keyed = entry
+        keyed.authMode = "privateKey"
+        try ConnectionSignIn(entry: entry, secret: "password").persist(defaults: defaults, using: keychain)
+        try ConnectionSignIn(entry: keyed, secret: "synthetic-key").persist(defaults: defaults, using: keychain)
+        try ConnectionSignIn(entry: entry, secret: "").persist(defaults: defaults, using: keychain, connected: false)
+        #expect(try ConnectionSignIn.load(entry, using: keychain).secret.isEmpty)
+        #expect(try ConnectionSignIn.load(keyed, using: keychain).secret == "synthetic-key")
+        var forgotten = keyed
+        forgotten.remember = false
+        try ConnectionSignIn(entry: forgotten, secret: "in-memory-key").persist(defaults: defaults, using: keychain, connected: false)
+        #expect(keychain.items.isEmpty)
+    }
+
+    @Test(arguments: ["password", "privateKey"])
+    func legacyProfileCredentialIsCopiedAndVerifiedBeforeRemoval(authMode: String) throws {
+        var profile = entry
+        profile.authMode = authMode
+        let keychain = FakeKeychainOperations()
+        let legacy = "connection.\(profile.id.uuidString).secret"
+        keychain.items[legacy] = Data("legacy-profile-secret".utf8)
+        #expect(try ConnectionSignIn.load(profile, using: keychain, readOnly: true).secret == "legacy-profile-secret")
+        #expect(keychain.addedAccounts.isEmpty)
+        #expect(keychain.deletedAccounts.isEmpty)
+        keychain.onDelete = { account in
+            if account == legacy { #expect(keychain.items[profile.secretAccount] == Data("legacy-profile-secret".utf8)) }
+        }
+        #expect(try ConnectionSignIn.load(profile, using: keychain).secret == "legacy-profile-secret")
+        #expect(keychain.items[legacy] == nil)
+        #expect(try ConnectionSignIn.load(profile, using: keychain).secret == "legacy-profile-secret")
+    }
+
+    @Test(arguments: ["read", "write", "verification", "cleanup"])
+    func legacyProfileMigrationFailureKeepsSourceRetryable(stage: String) throws {
+        let keychain = FakeKeychainOperations()
+        let legacy = "connection.\(entry.id.uuidString).secret"
+        keychain.items[legacy] = Data("legacy-password".utf8)
+        switch stage {
+        case "read": keychain.failingReadAccount = legacy
+        case "write": keychain.nextAddStatus = errSecInteractionNotAllowed
+        case "verification": keychain.onAdd = { keychain.mismatchReadAccount = $0 }
+        default: keychain.nextDeleteStatus = errSecInteractionNotAllowed
+        }
+        #expect(throws: KeychainStore.StoreError.self) { try ConnectionSignIn.load(entry, using: keychain) }
+        #expect(keychain.items[legacy] == Data("legacy-password".utf8))
+        if stage != "cleanup" { #expect(keychain.deletedAccounts.isEmpty) }
+        keychain.onAdd = nil
+        #expect(try ConnectionSignIn.load(entry, using: keychain).secret == "legacy-password")
+        #expect(keychain.items[legacy] == nil)
+    }
+
+    @Test func authenticationEditMigratesLegacyCredentialUsingSavedMethod() throws {
+        let suite = "LegacyAuthEdit.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        var keyed = entry
+        keyed.authMode = "privateKey"
+        try RecentConnectionStore.record(keyed, in: [], defaults: defaults, stampConnected: false)
+        keychain.items["connection.\(entry.id.uuidString).secret"] = Data("legacy-private-key".utf8)
+        try ConnectionSignIn(entry: entry, secret: "new-password").persist(defaults: defaults, using: keychain, connected: false)
+        #expect(try ConnectionSignIn.load(entry, using: keychain).secret == "new-password")
+        #expect(try ConnectionSignIn.load(keyed, using: keychain).secret == "legacy-private-key")
+    }
+
+    @MainActor @Test func formSubmitsBothCredentialsAndHonorsExplicitInactiveClearing() throws {
+        let suite = "FormCredentials.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        try ConnectionSignIn(entry: entry, secret: "password", otherSecret: "inactive-key")
+            .persist(defaults: defaults, using: keychain, connected: false)
+        let form = ConnectionSettingsView(connection: entry, editing: true, defaults: defaults, using: keychain)
+        var submitted = try form.signIn(defaults: defaults, using: keychain)
+        #expect(submitted.secret == "password")
+        #expect(submitted.otherSecret == "inactive-key")
+        try submitted.persist(defaults: defaults, using: keychain, connected: false)
+        #expect(ConnectionSettingsView(connection: entry, defaults: defaults, using: keychain).keyPEM == "inactive-key")
+        submitted.otherSecret = ""
+        try submitted.persist(defaults: defaults, using: keychain, connected: false)
+        let reopened = ConnectionSettingsView(connection: entry, defaults: defaults, using: keychain)
+        #expect(reopened.password == "password")
+        #expect(reopened.keyPEM.isEmpty)
+    }
+
     @Test func resolvesSavedPasswordAndPromptsOnlyWhenMissing() throws {
         let keychain = FakeKeychainOperations()
         #expect(try ConnectionSignIn.load(entry, using: keychain).needsSecret)
@@ -458,13 +581,13 @@ struct SavedConnectionWorkflowTests {
     }
 
     @Test(arguments: ["host", "port", "username", "auth"])
-    func editKeepsIdentityButDoesNotReuseDestinationSecrets(field: String) throws {
+    func explicitEmptyCredentialClearsSelectedMethodAfterDestinationEdit(field: String) throws {
         let keychain = FakeKeychainOperations()
         let defaults = try #require(UserDefaults(suiteName: "ConnectionEdit.\(UUID())"))
         defer { defaults.removeObject(forKey: RecentConnectionStore.storageKey) }
         try KeychainStore.save("old", account: entry.secretAccount, using: keychain)
         try RecentConnectionStore.record(entry, in: [], defaults: defaults, stampConnected: false)
-        try KeychainStore.save("old phrase", account: entry.secretAccount + ".passphrase", using: keychain)
+        try KeychainStore.save("old phrase", account: entry.passphraseAccount, using: keychain)
         var updated = entry
         switch field {
         case "port": updated.port = 2222
@@ -472,12 +595,12 @@ struct SavedConnectionWorkflowTests {
         case "auth": updated.authMode = "privateKey"
         default: updated.host = "other.local"
         }
-        #expect(!ConnectionSignIn.sameDestination(entry, updated))
         try ConnectionSignIn(entry: updated).persist(defaults: defaults, using: keychain, connected: false)
         #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain) == [updated])
         #expect(updated.id == entry.id)
-        #expect(try KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain) == nil)
-        #expect(try KeychainStore.load(account: entry.secretAccount, using: keychain) == nil)
+        #expect(try KeychainStore.load(account: entry.passphraseAccount, using: keychain) == (field == "auth" ? nil : "old phrase"))
+        #expect(try KeychainStore.load(account: updated.secretAccount, using: keychain) == nil)
+        if field == "auth" { #expect(try ConnectionSignIn.load(entry, using: keychain).secret == "old") }
     }
 }
 
@@ -518,9 +641,9 @@ extension SavedConnectionWorkflowTests {
         let keychain = FakeKeychainOperations()
         let defaults = try #require(UserDefaults(suiteName: "ConnectionPassphrase.\(UUID())"))
         defer { defaults.removeObject(forKey: RecentConnectionStore.storageKey) }
-        try KeychainStore.save("old phrase", account: entry.secretAccount + ".passphrase", using: keychain)
+        try KeychainStore.save("old phrase", account: entry.passphraseAccount, using: keychain)
         try ConnectionSignIn(entry: entry, secret: "password", passphrase: "phrase").persist(defaults: defaults, using: keychain)
-        #expect(try KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain) == nil)
+        #expect(try KeychainStore.load(account: entry.passphraseAccount, using: keychain) == nil)
     }
 }
 
@@ -539,10 +662,16 @@ extension SavedConnectionWorkflowTests {
 
 
 extension SavedConnectionWorkflowTests {
-    @MainActor @Test func failedCredentialReadPreventsDestructiveSettingsSave() throws {
+    @MainActor @Test(arguments: ["selected", "inactive", "passphrase", "legacy"])
+    func failedCredentialReadPreventsDestructiveSettingsSave(field: String) throws {
         let keychain = FakeKeychainOperations()
         try KeychainStore.save("saved", account: entry.secretAccount, using: keychain)
-        keychain.failingReadAccount = entry.secretAccount
+        switch field {
+        case "inactive": keychain.failingReadAccount = entry.credentialAccount(for: "privateKey")
+        case "passphrase": keychain.failingReadAccount = entry.passphraseAccount
+        case "legacy": keychain.failingReadAccount = entry.legacySecretAccount
+        default: keychain.failingReadAccount = entry.secretAccount
+        }
         let form = ConnectionSettingsView(connection: entry, editing: true, using: keychain)
         #expect(form.credentialLoadError != nil)
         #expect(!form.canSaveChanges)
@@ -707,6 +836,7 @@ extension SavedConnectionWorkflowTests {
         let deleted = RecentConnection(host: "deleted.local", port: 22, username: "cat", authMode: "password", remember: true)
         let saved = try RecentConnectionStore.record(deleted, in: [entry, second], defaults: defaults)
         for item in saved { try KeychainStore.save("secret", account: item.secretAccount, using: keychain) }
+        for account in deleted.credentialAccounts { try KeychainStore.save("secret", account: account, using: keychain) }
         var draft = RecentConnectionStore.ManagementDraft(connections: saved)
         draft.rename(id: entry.id, to: "Draft name")
         draft.move(fromOffsets: IndexSet(integer: 1), toOffset: 0)
@@ -733,9 +863,9 @@ extension SavedConnectionWorkflowTests {
         #expect(result[1] == fresh)
         #expect(result[0].name == "External rename")
         #expect(keychain.items[entry.secretAccount] == survivorSecret)
-        #expect(keychain.items[deleted.secretAccount] == nil)
+        for account in deleted.credentialAccounts { #expect(keychain.items[account] == nil) }
         #expect(keychain.addedAccounts.isEmpty)
-        #expect(Set(keychain.deletedAccounts) == [deleted.secretAccount, deleted.secretAccount + ".passphrase"])
+        #expect(Set(keychain.deletedAccounts) == Set(deleted.credentialAccounts))
     }
 
     @Test func managementSaveFailureLeavesMetadataForRetry() throws {
