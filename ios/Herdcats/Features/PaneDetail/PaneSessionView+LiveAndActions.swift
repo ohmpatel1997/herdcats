@@ -206,14 +206,16 @@ extension PaneSessionView {
               PaneKeyRoute.accepts(event, surface: surfaceModel.surface),
               event.isDeliverable else { return }
         let token: PaneLiveInputSession
-        switch keyRoute {
+        switch PaneKeyRoute.token(for: event, route: keyRoute, liveInputEnabled: liveInputEnabled) {
         case .live:
+            // Also while a choice answer is sending: Live keyboard input then
+            // queues behind the answer in the pane's lane.
             guard let session = liveSession, session.paneId == pane.paneId else { return }
             token = session
         case .oneShot:
-            guard case .keys = event, let owned = appModel.ownership.transportGeneration else { return }
+            guard let owned = appModel.ownership.transportGeneration else { return }
             token = oneShotToken(owned)
-        case .unavailable:
+        case nil:
             return
         }
         let queue = inputQueue()
@@ -227,6 +229,50 @@ extension PaneSessionView {
             return
         }
         liveMetrics.noteEnqueued(depth: queue.pendingCount)
+    }
+
+    /// Answers the choice card's option. The connection re-reads the pane in
+    /// its input lane and sends the digit or letter only if the prompt is
+    /// unchanged. If the send may or may not have arrived, keys pause until
+    /// the pane has been read again, as after any uncertain key.
+    func answerChoice(_ drawn: PaneChoicePrompt, _ option: Int) {
+        guard choiceRowsEnabled,
+              drawn.answerKey(option: option, agent: pane.agent) != nil,
+              let owned = appModel.ownership.transportGeneration else { return }
+        // Check against the prompt the user saw on the card. If what is now
+        // detected differs in any way, nothing is sent and the card refreshes.
+        guard let token = choiceAnswer.begin(option: option, drawn: drawn, current: visibleChoicePrompt) else {
+            Task {
+                await reload()
+                updateSessionParsedOutput()
+            }
+            return
+        }
+        let prompt = drawn
+        let paneId = pane.paneId
+        let agent = pane.agent
+        let connection = appModel.connection
+        Task {
+            do {
+                let result = try await connection.paneAnswerChoice(
+                    paneId: paneId, expected: prompt, option: option, agent: agent, owned: owned
+                )
+                choiceAnswer.finish(token: token, result: result, identity: prompt.identity)
+                if result == .sent {
+                    HapticFeedback.impact(.medium)
+                    // Give the agent a moment to take the answer, then read.
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
+                // After `.changed`, this read refreshes the buttons.
+                await reload()
+                updateSessionParsedOutput()
+            } catch {
+                // Only a failure while the key was going out lands here; one
+                // before it comes back as `.notSent`.
+                choiceAnswer.fail(token: token, message: PaneChoiceAnswerState.uncertainText)
+                pauseKeysForResync(reason: PaneKeyNotice.answerMayHaveArrived)
+            }
+        }
     }
 
     /// Drops queued Live events and the session token on pane switch,

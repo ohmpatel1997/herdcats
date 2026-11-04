@@ -422,6 +422,23 @@ struct PaneSessionStateTests {
         #expect(state.output == "newer")
     }
 
+    @Test @MainActor func sessionStateDetectsChoicePromptFromParsedOutput() async throws {
+        let state = try makeState()
+        let palette = TerminalPalette(palette: .moonlit, dark: true)
+        // The poll's text is ANSI; detection runs on the parsed plain rows.
+        await state.reload {
+            " Do you want to proceed?\n \u{1B}[36m❯\u{1B}[0m 1. \u{1B}[1mYes\u{1B}[0m\n   2. No\n\n Esc to cancel"
+        }
+        state.updateParsedOutput(palette: palette)
+        let prompt = try #require(state.choicePrompt)
+        #expect(prompt.options.map(\.label) == ["Yes", "No"])
+        #expect(prompt.context == ["Do you want to proceed?"])
+
+        await state.reload { "All done." }
+        state.updateParsedOutput(palette: palette)
+        #expect(state.choicePrompt == nil)
+    }
+
     @Test func textViewRendersOnlyWhenRevisionOrFontChanges() {
         let font = UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
         let larger = UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)

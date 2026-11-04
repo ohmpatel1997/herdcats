@@ -385,6 +385,12 @@ actor RecordingLiveSender: PaneLiveInputSending {
         failAfterGateWith = error
     }
 
+    /// Records something else that used the pane's lane, such as a choice
+    /// answer, so a test can check what came before and after it.
+    func note(_ entry: String) {
+        wire.append(entry)
+    }
+
     func sendPaneLiveText(_ text: String, session: PaneLiveInputSession) async throws {
         try await beforeSend(session: session)
         wire.append("text:\(text)")

@@ -105,6 +105,9 @@ enum ScreenshotFixtures {
 
     static var terminal: String {
         if ProcessInfo.processInfo.arguments.contains("-hc.empty-terminal-output") { return "" }
+        // A Claude permission prompt, so the pane shows its choice buttons.
+        // Answers still fail closed: fixtures are read-only.
+        if ProcessInfo.processInfo.arguments.contains("-hc.choice-prompt") { return choicePromptPreview }
         if ProcessInfo.processInfo.arguments.contains("-hc.long-terminal-selection") {
             return (0..<400).map { index in
                 let marker = String(format: "%04d", index)
@@ -113,6 +116,24 @@ enum ScreenshotFixtures {
         }
         return terminalPreview
     }
+
+    private static let choicePromptPreview = """
+    \u{001B}[36m❯ Run the onboarding tests and fix any failures.\u{001B}[0m
+
+    ● Running the focused onboarding tests first.
+
+    ────────────────────────────────────────────────────────────
+     Bash command
+     swift test --filter OnboardingTests
+     Run the onboarding test suite
+
+     Do you want to proceed?
+     \u{001B}[36m❯\u{001B}[0m 1. Yes
+       2. Yes, and don’t ask again for: swift test *
+       3. No
+
+     Esc to cancel · Tab to amend
+    """
 
     private static let terminalPreview = """
     \u{001B}[38;5;208m╭─ Claude Code ───────────────────────────────────────╮\u{001B}[0m

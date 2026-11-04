@@ -29,6 +29,9 @@ final class PaneSessionState {
     private(set) var outputRevision: UInt64 = 0
     /// Selectable text with diff tint, rebuilt once per `outputRevision`.
     private(set) var selectableOutput = AttributedString()
+    /// A numbered prompt at the bottom of the output that can be answered
+    /// with a tap, found in the same parsed plain rows the terminal shows.
+    private(set) var choicePrompt: PaneChoicePrompt?
 
     private var lastParsedOutput: String?
     private var lastParsedPalette: TerminalPalette?
@@ -60,6 +63,9 @@ final class PaneSessionState {
             palette: palette
         )
         selectableOutput = PaneOutputPresentation.selectableText(from: outputLines)
+        // Plain, ANSI-free rows: the same rows `PaneChoicePrompt.rows(from:)`
+        // gives the check before sending.
+        choicePrompt = PaneChoicePrompt.detect(rows: outputLines.map(\.plain))
         outputRevision &+= 1
     }
 
@@ -164,6 +170,13 @@ enum PaneFocusPolicy {
 
     static func effects(wasFocused: Bool, isFocused: Bool) -> Effects {
         Effects(releasesInput: wasFocused && !isFocused, marksSeen: !wasFocused && isFocused)
+    }
+
+    /// Read the pane once when its agent starts waiting for an answer, so a
+    /// prompt's buttons appear without waiting for the next poll. Only the
+    /// change into blocked counts, not every update while it stays blocked.
+    static func reloadsOnBlocked(from previous: AgentStatus, to current: AgentStatus) -> Bool {
+        previous != .blocked && current == .blocked
     }
 
     /// How long after a slot put its keyboard away the other slot may still

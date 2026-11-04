@@ -51,6 +51,11 @@ It runs only while a Timeline is open. Pi also needs the Herdcats Pi extension;
 see [Pi conversations](ios/docs/pi-conversations.md). The terminal view works
 without the bridge.
 
+In the terminal view, a Claude or Codex numbered choice at the bottom of the
+pane also shows as buttons. Before sending the digit or letter, Herdcats re-reads
+the screen and checks that the question and its options are unchanged. This
+needs no bridge and works with Herdr Core.
+
 **Show Compose by Default** is enabled initially, so panes open with the compose
 field and keyboard ready. Turn it off in pane options or Settings → Pane to
 start with the Live toolbar. The key row (Esc, Tab, ↑, Ctrl, Alt, Keys) also

@@ -25,6 +25,9 @@ enum PaneKeyRoute: Equatable {
         /// stopped (offline, background, focus moving away), so the screen may
         /// be old. Keys come back after the next successful read.
         case reading
+        /// An answer from the choice card is being sent. A key tapped now
+        /// would land on whatever screen comes after it.
+        case answering
     }
 
     var sendsKeys: Bool {
@@ -43,10 +46,12 @@ enum PaneKeyRoute: Equatable {
         isRecording: Bool,
         queueState: PaneLiveInputQueueState?,
         liveInputEnabled: Bool,
-        hasFreshRead: Bool
+        hasFreshRead: Bool,
+        isAnswering: Bool = false
     ) -> PaneKeyRoute {
         if isOffline { return .unavailable(.offline) }
         if isRecording { return .unavailable(.recording) }
+        if isAnswering { return .unavailable(.answering) }
         // A Live session already proved the connection and its generation,
         // and is installed only after a fresh read.
         if liveInputEnabled && queueState != .needsResync { return .live }
@@ -56,6 +61,30 @@ enum PaneKeyRoute: Equatable {
         if queueState == .needsResync { return .unavailable(.resyncing) }
         if !hasFreshRead { return .unavailable(.reading) }
         return .oneShot
+    }
+
+    enum Token: Equatable {
+        case live
+        case oneShot
+    }
+
+    /// Which token an event goes out with on this route, or nil to send
+    /// nothing. While a choice answer is sending, the rail and drawer are
+    /// switched off, so anything that still arrives comes from the Live
+    /// keyboard: text, Return, Backspace, hardware keys or a Ctrl chord. All
+    /// of it is queued behind the answer, in the order typed, never dropped.
+    static func token(for event: PaneLiveInputEvent, route: PaneKeyRoute, liveInputEnabled: Bool) -> Token? {
+        switch route {
+        case .live:
+            return .live
+        case .oneShot:
+            if case .keys = event { return .oneShot }
+            return nil
+        case .unavailable(.answering):
+            return liveInputEnabled ? .live : nil
+        case .unavailable:
+            return nil
+        }
     }
 
     /// Rail keys may come from the Live toolbar or from above Compose. Typed
@@ -81,6 +110,7 @@ struct PaneKeyNotice: Equatable {
     static let readFailed = "Couldn’t read the pane, so keys stay paused. Trying again."
     static let mayNotHaveArrived = "That key may not have reached the pane."
     static let tooManyKeys = "Too many keys at once. Some may not have reached the pane."
+    static let answerMayHaveArrived = "Your answer may have reached the pane."
 
     static let coreRefusedBatch = "Herdr Core refused those keys, so they and any after them weren’t sent."
 
@@ -109,6 +139,9 @@ struct PaneKeyNotice: Equatable {
         guard !showsTimeline else { return nil }
         switch route {
         case .unavailable(.offline), .unavailable(.recording):
+            return nil
+        case .unavailable(.answering):
+            // The choice card right above says "Sending your answer…".
             return nil
         case .unavailable(.connecting):
             return PaneKeyNotice(text: connecting, offersRetry: false)

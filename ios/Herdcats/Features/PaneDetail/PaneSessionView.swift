@@ -86,6 +86,8 @@ struct PaneSessionView: View {
     /// Whether the pane has been read since input last stopped; one-shot
     /// keys wait for that.
     @State var freshRead = PaneFreshReadGate()
+    /// The last tap on the choice card and what came of it.
+    @State var choiceAnswer = PaneChoiceAnswerState()
     /// Monotonic seconds (`systemUptime`) of the last Live acknowledgement
     /// and last rapid read, driving `PaneLiveRefreshPolicy`.
     @State var lastLiveAckAt: TimeInterval?
@@ -142,8 +144,26 @@ struct PaneSessionView: View {
             isRecording: surfaceModel.surface == .voiceRecording,
             queueState: liveQueueState,
             liveInputEnabled: liveInputEnabled,
-            hasFreshRead: hasFreshPaneRead
+            hasFreshRead: hasFreshPaneRead,
+            isAnswering: choiceAnswer.isSending
         )
+    }
+
+    /// The prompt to show as buttons, if any: only in the focused terminal
+    /// view, while connected and not recording, and only when v1 can answer
+    /// at least one of its options.
+    var visibleChoicePrompt: PaneChoicePrompt? {
+        guard paneIsFocused, !showsTimeline, surfaceModel.surface != .voiceRecording,
+              appModel.isReadyForTerminalInput, !appModel.isOffline,
+              let prompt = session.choicePrompt, prompt.isAnswerable(agent: pane.agent),
+              !choiceAnswer.isHidden(for: prompt) else { return nil }
+        return prompt
+    }
+
+    /// Choice buttons wait while keys are queued, being sent or paused for a
+    /// fresh read, so an answer never overtakes or follows an uncertain key.
+    var choiceRowsEnabled: Bool {
+        livePendingCount == 0 && !isLiveDraining && liveQueueState != .needsResync
     }
 
     private var keyRowNotice: PaneKeyNotice? {
@@ -268,8 +288,17 @@ struct PaneSessionView: View {
     }
 
     private func handlePaneChange(_ newPane: PaneEntry) {
+        let previousStatus = session.pane.status
         session.updatePane(newPane)
         updateSessionParsedOutput()
+        if PaneFocusPolicy.reloadsOnBlocked(from: previousStatus, to: newPane.status) {
+            // The agent now waits for an answer: read at once, so its prompt's
+            // buttons appear without waiting for the next poll.
+            Task {
+                await reload()
+                updateSessionParsedOutput()
+            }
+        }
         if newPane.status != .done {
             locallyClearedDone = false
         }
@@ -545,6 +574,18 @@ struct PaneSessionView: View {
         .overlay(alignment: .bottom) {
             VStack(spacing: 0) {
                 if paneIsFocused {
+                    if let prompt = visibleChoicePrompt {
+                        PaneChoiceCard(
+                            prompt: prompt,
+                            agent: pane.agent,
+                            state: choiceAnswer,
+                            rowsEnabled: choiceRowsEnabled,
+                            onAnswer: answerChoice
+                        )
+                        .padding(.horizontal, 12)
+                        .environment(\.colorScheme, .dark)
+                        .transition(.opacity)
+                    }
                     if showsTimeline {
                         if let sessionError {
                             Text(sessionError).font(.jost(.caption)).foregroundStyle(Theme.destructive)
@@ -648,6 +689,9 @@ struct PaneSessionView: View {
             // the same fast re-read as Live keys.
             lastLiveAckAt = ProcessInfo.processInfo.systemUptime
             keyNotice = nil
+        }
+        .onChange(of: session.choicePrompt, initial: true) { _, prompt in
+            choiceAnswer.sync(prompt)
         }
         .onChange(of: liveFailureCount) { _, _ in
             switch liveQueue?.lastFailure {

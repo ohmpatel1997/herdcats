@@ -113,6 +113,27 @@ struct StatusDot: View {
     }
 }
 
+// MARK: - Needs your answer
+
+/// The label on anything waiting for the user's answer: a blocked dot and
+/// "Needs your answer" in the blocked colour. Shared so every such card reads
+/// the same.
+struct NeedsAnswerHeader: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Theme.statusBlocked)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text("Needs your answer")
+                .font(.jost(.caption, weight: .semibold))
+                .foregroundStyle(Theme.statusBlocked)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
 // MARK: - Navigation title
 
 struct StatusNavigationTitle: View {

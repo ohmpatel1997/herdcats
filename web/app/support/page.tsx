@@ -473,7 +473,7 @@ export default function SupportPage() {
         <p>Timeline and Terminal are two ways to read the same agent session. Compose is where you draft a message, and works with either view.</p>
         <ul>
         <li><strong>Timeline:</strong> read messages and tool activity in a conversation layout that follows your app theme. For supported agents, use the terminal or speech-bubble button at the top to switch views.</li>
-        <li><strong>Terminal:</strong> see the agent&rsquo;s own terminal UI. Tap its output to type directly, or use the key row for special keys. It stays above Compose too. After you scroll back into history, tap the round down-arrow button to jump to the newest output.</li>
+        <li><strong>Terminal:</strong> see the agent&rsquo;s own terminal UI. Tap its output to type directly, or use the key row for special keys. It stays above Compose too. When Claude or Codex asks a numbered question, tap its option in the card above the keys; Herdcats checks the question is unchanged before answering. After you scroll back into history, tap the round down-arrow button to jump to the newest output.</li>
         <li><strong>Compose:</strong> write and review a message before tapping Send. Tap the compose button in the toolbar to open it. Add photos with the attachment button.</li>
         <li><strong>Voice:</strong> tap the microphone to dictate, then the checkmark to finish recording. The transcript opens in Compose for you to edit and send.</li>
         </ul>

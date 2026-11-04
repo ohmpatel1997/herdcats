@@ -97,6 +97,50 @@ extension HerdrConnection {
         }
     }
 
+    /// Answers a numbered prompt with one key, only if a fresh read still
+    /// shows the same prompt: the same question, command and file rows above
+    /// the options, and the same options. The read is the poll's own read
+    /// (`paneReadText`), parsed into the same rows, so the two can differ only
+    /// if the screen changed. Runs in the pane's input lane, so it is ordered
+    /// with every other input to the pane. Never retried.
+    func paneAnswerChoice(
+        paneId: String,
+        expected: PaneChoicePrompt,
+        option: Int,
+        agent: String?,
+        owned: ConnectionGeneration
+    ) async throws -> PaneChoiceSendResult {
+        // A stale connection fails before anything is read or sent.
+        guard (try? requireGeneration(owned)) != nil else { return .notSent }
+        return try await paneInput.run(paneId: paneId) {
+            try await self.paneAnswerChoiceUnlocked(
+                paneId: paneId, expected: expected, option: option, agent: agent, owned: owned
+            )
+        }
+    }
+
+    func paneAnswerChoiceUnlocked(
+        paneId: String,
+        expected: PaneChoicePrompt,
+        option: Int,
+        agent: String?,
+        owned: ConnectionGeneration
+    ) async throws -> PaneChoiceSendResult {
+        try await PaneChoicePrompt.answer(
+            expected: expected, option: option, agent: agent,
+            read: {
+                try await self.requireGeneration(owned)
+                let screen = try await self.paneReadText(paneId: paneId)
+                try await self.requireGeneration(owned)
+                return screen
+            },
+            send: { key in
+                try await self.paneSendKeysUnlocked(paneId: paneId, [key], owned: owned)
+                try await self.requireGeneration(owned)
+            }
+        )
+    }
+
     enum RailKeyPath: Equatable, Sendable {
         case liveShell
         case command

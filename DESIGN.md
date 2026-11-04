@@ -154,6 +154,13 @@ img.pixel, canvas.pixel {
 - Bound retained-content recovery by the measured pane-switcher and composition-dock insets. If a multiline draft and keyboard leave too little room for the card, scroll it within that output area and keep Retry reachable above the dock.
 - Show exactly one recovery action and invoke the current session owner's reconnect callback. Connecting and success status do not add a Retry button. Verify the outlined action in both appearances, with large text and with the Timeline keyboard open.
 
+### Pane choice card (iOS)
+- When an agent's numbered choice sits at the bottom of a terminal pane, show it as a card above the key row, on the same glass surface as the key row and Keys drawer, with their 16pt corners.
+- Header: the shared `NeedsAnswerHeader` (a blocked dot and "Needs your answer" in `statusBlocked`), with a chevron that folds the card to "N choices".
+- Rows are 44pt tall at least: the number (or the letter shortcut) in `Theme.accent`, the label in Jost subheadline, any description in muted caption text. The row the agent has selected gets a 1pt `Theme.accent` outline. Checked multi-select rows show a checkmark. At most about four rows show; the rest scroll.
+- Only rows the app can answer with one digit or letter are buttons. A free-text row isn't, and a note says to use ↓ and type.
+- Status stays inside the card: "Sending your answer…" with the spinner on the tapped row, or what went wrong. The key row's notice line stays empty meanwhile.
+
 ### Accent / "sign" badge
 - Background `mint-200` or `paper-50`, text and 2px border `lacquer-900`. Optionally set the text vertically.
 
