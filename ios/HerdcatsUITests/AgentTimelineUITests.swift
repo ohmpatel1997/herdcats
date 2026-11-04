@@ -879,6 +879,34 @@ final class AgentTimelineUITests: XCTestCase {
         app.terminate()
     }
 
+    func testWorkingRowAndNeedsAnswerCard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-working", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(app)
+        let working = app.descendants(matching: .any)["timeline-working"].firstMatch
+        XCTAssertTrue(working.waitForExistence(timeout: 5))
+        XCTAssertEqual(working.label, "Claude is working")
+        let workingShot = XCTAttachment(screenshot: app.screenshot())
+        workingShot.name = "Timeline working row"
+        workingShot.lifetime = .keepAlways
+        add(workingShot)
+        app.terminate()
+
+        let approval = XCUIApplication()
+        approval.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-approval-claude", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(approval)
+        let card = approval.descendants(matching: .any)["timeline-approval-card"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        XCTAssertTrue(approval.descendants(matching: .any)["Needs your answer"].firstMatch.exists)
+        // Waiting for an answer is not working.
+        XCTAssertFalse(approval.descendants(matching: .any)["timeline-working"].firstMatch.exists)
+        let cardShot = XCTAttachment(screenshot: approval.screenshot())
+        cardShot.name = "Timeline needs your answer card"
+        cardShot.lifetime = .keepAlways
+        add(cardShot)
+        approval.terminate()
+    }
+
     func testSpeakerRowsNameEachTurnAndYourMessagesSayYou() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-conversation", "-hc.light", "-paneShowComposeByDefault", "NO"]

@@ -24,7 +24,6 @@ struct AgentTimelineView: View {
     var onFocusComposer: () -> Void = {}
     @Environment(AppModel.self) var appModel
     @Environment(\.scenePhase) var scenePhase
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State var waitingKey: WaitingTaskKey?
     @State var phoneAnswersSelection: PhoneAnswersSelection?
@@ -59,6 +58,9 @@ struct AgentTimelineView: View {
     @State private var questionFieldFrames: [QuestionFieldTarget: CGRect] = [:]
     @State private var questionKeyboardFrame: CGRect = .null
     @State var historyScrollAnchor: TimelineHistoryScrollAnchor?
+    /// Messages that arrived while you were scrolled up.
+    @State private var unseen = TimelineUnseenCounter()
+    @Environment(\.paneIsFocused) private var paneIsFocused
     @State var bridgeCapabilities: AgentBridgeCapabilities?
     @State var bridgeVersion: String?
     @State var showsCodexDaemonConfirm = false
@@ -275,6 +277,14 @@ struct AgentTimelineView: View {
                                     .id("\(contentScope):question:\(pending.requestId)")
                                     .padding(.top, Self.sectionGap)
                             }
+                            if TimelineLiveState.showsWorkingRow(
+                                agentStatus: timeline.agentStatus, lastItem: items.last,
+                                pendingApproval: timeline.pendingApproval != nil,
+                                pendingQuestion: timeline.pendingQuestion != nil,
+                                pendingPiDialog: timeline.pendingPiDialog != nil) {
+                                TimelineWorkingRow(agent: speakerAgent)
+                                    .padding(.top, Self.sectionGap)
+                            }
                         } else {
                             availability
                         }
@@ -418,16 +428,12 @@ struct AgentTimelineView: View {
                 .overlay(alignment: .bottomTrailing) {
                     Group {
                     if !atBottom && timeline.phase == .ready {
-                        Button {
+                        JumpToLatestButton(label: "Jump to latest messages", badge: .count(unseen.count)) {
                             following = true
                             withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
                                 proxy.scrollTo("timeline-bottom", anchor: .bottom)
                             }
-                        } label: {
-                            latestIcon
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Jump to latest messages")
                         .accessibilityIdentifier("timeline-latest")
                         .padding(.trailing, 16)
                         .padding(.bottom, bottomOverlayInset + approvalInset + 8)
@@ -533,7 +539,19 @@ struct AgentTimelineView: View {
                 beginSetup(reason: .updateRequired, shouldUseTerminalOnDismiss: timeline.phase != .ready)
             }
         }
+        .onChange(of: timeline.revision) { _, _ in
+            let items = conversationItems
+            if atBottom || following { unseen.markSeen(items) } else { unseen.update(items) }
+        }
+        .onChange(of: timeline.identity) { _, _ in unseen.markSeen(conversationItems) }
+        .onChange(of: atBottom) { _, bottom in if bottom { unseen.markSeen(conversationItems) } }
+        .onChange(of: StatusKey(scope: contentScope, status: timeline.agentStatus)) { previous, current in
+            // A new session or snapshot is not a status change of this one.
+            guard previous.scope == current.scope else { return }
+            announceStatusChange(from: previous.status, to: current.status)
+        }
         .onChange(of: contentScope) { _, _ in
+            unseen.markSeen(conversationItems)
             historyLoader.cancel()
             entryFrames.frames = [:]
             historyScrollAnchor = nil
@@ -605,6 +623,22 @@ struct AgentTimelineView: View {
         sheetState.sync(visible: matchesLiveTimeline && approvalViewVisible && scenePhase == .active,
             phone: phoneAnswersSelection != nil, helper: showsSetup, codex: showsCodexDaemonConfirm)
     }
+    private struct StatusKey: Equatable {
+        let scope: String
+        let status: String?
+    }
+
+    /// Tells VoiceOver users when the turn finishes or an answer is needed.
+    /// Only while VoiceOver runs, the scene is active, and this Timeline is
+    /// the focused pane showing the live conversation.
+    private func announceStatusChange(from previous: String?, to current: String?) {
+        guard UIAccessibility.isVoiceOverRunning, scenePhase == .active, matchesLiveTimeline,
+              let message = TimelineLiveState.turnEndAnnouncement(
+                agentName: TimelineSpeaker.name(agent: speakerAgent), previous: previous, current: current,
+                isFocusedPane: paneIsFocused) else { return }
+        UIAccessibility.post(notification: .announcement, argument: message)
+    }
+
     private var contentScope: String {
         "\(activeOwner?.uuidString ?? "none"):\(timeline.generation ?? 0):\(timeline.identity?.nativeSessionId ?? "")"
     }
@@ -622,21 +656,6 @@ struct AgentTimelineView: View {
         return result
     }
 
-    @ViewBuilder private var latestIcon: some View {
-        let icon = Image(systemName: "arrow.down")
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(Theme.text)
-            .frame(width: 44, height: 44)
-            .contentShape(Circle())
-        if reduceTransparency {
-            icon.background(Theme.cardBackground, in: Circle())
-        } else if #available(iOS 26.0, *) {
-            icon.glassEffect(.regular.interactive(), in: Circle())
-        } else {
-            icon.background(.ultraThinMaterial, in: Circle())
-        }
-    }
-
 }
 
 
@@ -650,6 +669,7 @@ private struct PiDialogCard: View {
     @State private var text = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            NeedsAnswerHeader()
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(verbatim: dialog.title)
                     .font(.jost(.title3, weight: .semibold))
@@ -692,7 +712,7 @@ private struct PiDialogCard: View {
         }
         .padding(16)
         .foregroundStyle(Theme.text)
-        .herdrCard()
+        .needsAnswerCard()
         .disabled(isSending)
         .onAppear { text = dialog.value ?? "" }
         .accessibilityIdentifier("timeline-pi-dialog")

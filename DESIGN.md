@@ -163,6 +163,10 @@ img.pixel, canvas.pixel {
 - **Code colours** come from the selected palette's terminal colours: slot 5 for keywords, slot 3 for numbers, slot 2 for strings, and muted text for comments. Plain code, comments, syntax and the `+`/`−` markers are each adjusted to 4.5:1 against their own line, card or card plus the 13% diff wash, with the terminal's adjuster. So Moonlit's terminal magenta now also colours code in the app.
 - **Tool steps:** one summary row per run of tools, in muted subheadline beside a 2pt rail of muted text at 35%, at least 44pt tall. A running row shows the working spinner.
 - **Notices** (turn interrupted, history hints, delayed source): a centred muted caption with an icon (leading when it heads an unsupported record's details). Only the icon takes the warning or error colour.
+- **Needs your answer:** approval, question and Pi dialog cards keep the card fill but swap the hairline for a 1.5pt accent outline, and open with the shared `NeedsAnswerHeader`: a blocked-colour dot and "Needs your answer". A swipe-to-confirm option has "Swipe to confirm" under it.
+- **Working:** while the agent works and nothing waits for you, a muted footnote row reads "<agent> is working" beside the working spinner, which stops under Reduce Motion. A running tool row already shows progress, so the working row hides then.
+- **Jump to latest:** the 44pt round button stays as it is. When messages arrive while you are scrolled up, an accent-fill count badge (at most "99+") sits on its top trailing corner, and VoiceOver hears it as the button's value ("2 new").
+- **Spoken updates:** with VoiceOver on, the focused Timeline says "<agent> finished" or "<agent> needs your answer" when the status changes, using the same rule as the alert sounds.
 - **Spacing:** 24pt where the speaker changes, 12pt within a turn. The column is at most 720pt wide and centred on iPad and the Duo's inner screen.
 - **Under the pane switcher:** the strip behind the switcher takes the pane's canvas and fades into the content over 16pt, in both the Timeline and the terminal.
 

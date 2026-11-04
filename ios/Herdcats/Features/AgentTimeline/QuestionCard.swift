@@ -26,6 +26,7 @@ struct QuestionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            NeedsAnswerHeader()
             HStack(alignment: .firstTextBaseline) {
                 Text(verbatim: pending.questions.count == 1 ? pending.questions[0].text : "\(pending.questions.count) questions")
                     .font(.jost(.title3, weight: .semibold))
@@ -63,7 +64,7 @@ struct QuestionCard: View {
         }
         .padding(16)
         .foregroundStyle(Theme.text)
-        .herdrCard()
+        .needsAnswerCard()
         .accessibilityIdentifier("timeline-question-card")
         .onChange(of: focusedQuestion) { _, index in
             onFieldFocus(index.map { fieldTarget($0) })

@@ -6,6 +6,7 @@ struct ApprovalCard: View {
     let onRespond: (AgentApprovalOption) -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            NeedsAnswerHeader()
             header
             commandBox
             if let text = pending.explanation {
@@ -30,7 +31,7 @@ struct ApprovalCard: View {
         }
         .padding(16)
         .foregroundStyle(Theme.text)
-        .herdrCard()
+        .needsAnswerCard()
         .accessibilityIdentifier("timeline-approval-card")
     }
     private var header: some View {
@@ -66,7 +67,13 @@ struct ApprovalCard: View {
     }
     @ViewBuilder private func optionControl(_ option: AgentApprovalOption, index: Int) -> some View {
         if ApprovalResponseState.requiresSwipe(index: index, count: pending.options.count) {
-            SwipeToConfirm(labelLines: option.labelLines) { onRespond(option) }
+            VStack(alignment: .leading, spacing: 4) {
+                SwipeToConfirm(labelLines: option.labelLines) { onRespond(option) }
+                // VoiceOver already hears this as the control's hint.
+                Text("Swipe to confirm")
+                    .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                    .accessibilityHidden(true)
+            }
         } else if index == 0 {
             optionButton(option).buttonStyle(.herdrPrimary())
         } else {
@@ -82,6 +89,19 @@ struct ApprovalCard: View {
             }
         }
         .accessibilityLabel(option.labelLines.joined(separator: "\n"))
+    }
+}
+
+extension View {
+    /// A card waiting for your answer: the card fill with a 1.5pt accent
+    /// outline instead of the usual hairline. Used with `NeedsAnswerHeader`.
+    func needsAnswerCard() -> some View {
+        herdrCard(showsBorder: false)
+            .overlay {
+                RoundedRectangle.continuous(DesignSystem.CornerRadius.xl)
+                    .strokeBorder(Theme.accent, lineWidth: 1.5)
+                    .allowsHitTesting(false)
+            }
     }
 }
 

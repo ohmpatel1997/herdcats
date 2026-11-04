@@ -113,6 +113,27 @@ struct StatusDot: View {
     }
 }
 
+// MARK: - Needs your answer
+
+/// The label on anything waiting for the user's answer: a blocked dot and
+/// "Needs your answer" in the blocked colour. Shared so every such card reads
+/// the same.
+struct NeedsAnswerHeader: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Theme.statusBlocked)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text("Needs your answer")
+                .font(.jost(.caption, weight: .semibold))
+                .foregroundStyle(Theme.statusBlocked)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
 // MARK: - Navigation title
 
 struct StatusNavigationTitle: View {
@@ -255,6 +276,83 @@ struct AgentKindIcon: View {
                 .font(.jost(size, weight: .bold))
                 .foregroundStyle(AgentKindVisual.color(for: kind))
                 .accessibilityHidden(true)
+        }
+    }
+}
+
+// MARK: - Jump to latest
+
+/// The round 44pt jump-to-latest button shared by the Timeline and the
+/// terminal. A badge on its top trailing corner says something new arrived
+/// while you were scrolled up: a count in the Timeline, a dot in the
+/// terminal. The badge is an overlay, so the button stays a 44pt circle,
+/// and VoiceOver hears it as the button's value, not a separate element.
+struct JumpToLatestButton: View {
+    enum Badge: Equatable {
+        case none
+        case count(Int)
+        case dot
+    }
+
+    let label: String
+    var badge: Badge = .none
+    let action: () -> Void
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    /// The spoken value for a badge: "2 new", "New output", or nothing.
+    static func accessibilityValue(_ badge: Badge) -> String {
+        switch badge {
+        case .none: ""
+        case .count(let count): count > 0 ? "\(count) new" : ""
+        case .dot: "New output"
+        }
+    }
+
+    var body: some View {
+        Button(action: action) { icon }
+            .buttonStyle(.plain)
+            .overlay(alignment: .topTrailing) { badgeView.accessibilityHidden(true) }
+            .accessibilityLabel(label)
+            .accessibilityValue(Self.accessibilityValue(badge))
+    }
+
+    @ViewBuilder private var icon: some View {
+        let icon = Image(systemName: "arrow.down")
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(Theme.text)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+        if reduceTransparency {
+            icon.background(Theme.cardBackground, in: Circle())
+        } else if #available(iOS 26.0, *) {
+            icon.glassEffect(.regular.interactive(), in: Circle())
+        } else {
+            icon.background(.ultraThinMaterial, in: Circle())
+        }
+    }
+
+    @ViewBuilder private var badgeView: some View {
+        switch badge {
+        case .none:
+            EmptyView()
+        case .count(let count):
+            if let text = TimelineUnseenCounter.badgeText(count) {
+                Text(text)
+                    .font(.jost(.caption2, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.onPrimary)
+                    .padding(.horizontal, 5)
+                    .frame(minWidth: 18, minHeight: 18)
+                    .background(Theme.accentFill, in: Capsule())
+                    .fixedSize()
+                    .offset(x: 4, y: -4)
+            }
+        case .dot:
+            Circle()
+                .fill(Theme.accentFill)
+                .frame(width: 10, height: 10)
+                .overlay { Circle().strokeBorder(Theme.background, lineWidth: 1.5) }
+                .offset(x: 1, y: -1)
         }
     }
 }

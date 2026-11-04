@@ -381,7 +381,7 @@
                         "identity": [
                             "pane_id": paneId, "terminal_id": "fixture-terminal", "agent": splitCheckout ? "codex" : ScreenshotFixtures.paneAgent,
                             "native_session_id": "fixture-session",
-                        ], "generation": 1, "entries": entries, "has_more": ScreenshotFixtures.screen.hasPrefix("timeline-history"), "before": "message:user", "agent_status": (showsApproval || showsQuestion) ? "blocked" : "idle",
+                        ], "generation": 1, "entries": entries, "has_more": ScreenshotFixtures.screen.hasPrefix("timeline-history"), "before": "message:user", "agent_status": (showsApproval || showsQuestion) ? "blocked" : ScreenshotFixtures.screen == "timeline-working" ? "working" : "idle",
                         "unknown_records": ProcessInfo.processInfo.arguments.contains("-hc.timeline-long") ? 2 : 0, "dropped_entries": 0,
                     ],
                 ]))
