@@ -260,7 +260,7 @@ extension AgentTimelineView {
         #if DEBUG && targetEnvironment(simulator)
             if ScreenshotFixtures.enabled {
                 if ScreenshotFixtures.screen == "timeline-loading" { return true }
-                if ScreenshotFixtures.screen == "timeline-history-position" { following = false }
+                if AgentTimelineScreenshotFixture.holdsHistoryPosition { following = false }
                 if ScreenshotFixtures.screen.contains("helper-old") || ScreenshotFixtures.screen.contains("needs-upgrade") {
                     bridgeVersion = "0.1.4"
                 } else if ScreenshotFixtures.screen == "optional-upgrade-menu" {
@@ -338,7 +338,7 @@ extension AgentTimelineView {
         do {
             #if DEBUG && targetEnvironment(simulator)
                 if ScreenshotFixtures.enabled {
-                    if ScreenshotFixtures.screen == "timeline-history-position" {
+                    if AgentTimelineScreenshotFixture.holdsHistoryPosition {
                         try await Task.sleep(for: .seconds(5))
                     } else if ProcessInfo.processInfo.arguments.contains("-hc.timeline-history-delay") {
                         try await Task.sleep(for: .seconds(2))

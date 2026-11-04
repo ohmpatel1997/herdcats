@@ -54,6 +54,36 @@ enum TimelineMarkdown {
         return attributed
     }
 
+    /// Your own messages: the same sanitizing, then an underline on every
+    /// link that survives it. Inside your bubble links take the text colour,
+    /// which is readable on the bubble in every palette, so the underline is
+    /// what marks them as links.
+    static func bubbleStyled(_ text: String) -> AttributedString {
+        var attributed = sanitized(text)
+        let linked = attributed.runs.filter { $0.link != nil }.map(\.range)
+        for range in linked {
+            attributed[range][AttributeScopes.SwiftUIAttributes.UnderlineStyleAttribute.self] = .single
+            attributed[range][AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self] = Theme.text
+        }
+        return attributed
+    }
+
+    /// One VoiceOver action per link in an already-sanitized string, named by
+    /// the link's host ("Open link: example.com"). Your bubble reads as one
+    /// element, so these actions are how links inside it stay reachable.
+    static func linkActions(_ attributed: AttributedString) -> [TimelineLinkAction] {
+        var actions: [TimelineLinkAction] = []
+        var seen: Set<URL> = []
+        for run in attributed.runs {
+            guard let url = run.link, seen.insert(url).inserted else { continue }
+            var name = "Open link: \(url.host?.lowercased() ?? url.absoluteString)"
+            // Two links to one host get their paths too, so the names differ.
+            if actions.contains(where: { $0.name == name }) { name += url.path }
+            actions.append(TimelineLinkAction(name: name, url: url))
+        }
+        return actions
+    }
+
     private static func isSafe(_ url: URL, label: String) -> Bool {
         guard let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
               let host = url.host?.lowercased(), !host.isEmpty else { return false }
@@ -100,6 +130,11 @@ enum TimelineMarkdown {
     }
 }
 
+struct TimelineLinkAction: Equatable {
+    let name: String
+    let url: URL
+}
+
 // MARK: - Agent timeline entry view
 
 struct AgentTimelineEntryView: View {
@@ -107,51 +142,134 @@ struct AgentTimelineEntryView: View {
     let files: TimelineContentFiles
     let scope: String
     let loadContent: @MainActor (String) async throws -> Data
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.openURL) private var openURL
     @State private var thumbnail: UIImage?
     @State private var originalURL: URL?
     @State private var previewURL: URL?
     @State private var imageLink: URL?
     @State private var imageError: String?
 
+    /// Your bubble never grows wider than this, even on iPad.
+    static let bubbleMaxWidth: CGFloat = 560
+    /// The bubble's corners: rounded, with a tighter corner on the side it
+    /// was sent from. The corners mirror in right-to-left layouts.
+    static let bubbleShape = UnevenRoundedRectangle(
+        cornerRadii: .init(topLeading: 16, bottomLeading: 16, bottomTrailing: 6, topTrailing: 16),
+        style: .continuous)
+
+    /// Space kept clear on the leading side of your bubble. It shrinks at
+    /// accessibility text sizes so the bubble still fits a few words a line.
+    static func bubbleLeadingGap(isAccessibilitySize: Bool) -> CGFloat {
+        isAccessibilitySize ? 16 : 48
+    }
+
     var body: some View {
+        Group {
+            switch TimelineTurnLayout.role(entry: entry) {
+            case .user: userLayout
+            case .notice: noticeLayout
+            case .agent, .activity: agentLayout
+            }
+        }
+        .task(id: entry.contentRef) { if entry.kind == "image" { await loadImage() } }
+        .onDisappear { thumbnail = nil }
+        .quickLookPreview($previewURL)
+    }
+
+    // MARK: Your messages
+
+    /// A bubble on the trailing side that hugs its text.
+    private var userLayout: some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: Self.bubbleLeadingGap(isAccessibilitySize: dynamicTypeSize.isAccessibilitySize))
+            VStack(alignment: .trailing, spacing: 4) {
+                bubble
+                if entry.truncated {
+                    Text("Preview shortened.")
+                        .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                }
+            }
+            .frame(maxWidth: Self.bubbleMaxWidth, alignment: .trailing)
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    @ViewBuilder private var bubble: some View {
+        if entry.kind == "image" {
+            // The image button keeps its own label and identifier; the group
+            // is named "You" so VoiceOver still says who sent it.
+            VStack(alignment: .trailing, spacing: 8) { imageContent }
+                .modifier(UserBubbleFill())
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("You")
+                .accessibilityIdentifier("timeline-message-\(entry.id)")
+        } else {
+            let text = bubbleMarkdown
+            Text(text)
+                .font(.jost(.body)).lineSpacing(2)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .modifier(UserBubbleFill())
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("You")
+                .accessibilityValue(String(text.characters))
+                .accessibilityIdentifier("timeline-message-\(entry.id)")
+                .accessibilityActions {
+                    ForEach(TimelineMarkdown.linkActions(text), id: \.url) { action in
+                        Button(action.name) { openURL(action.url) }
+                    }
+                }
+        }
+    }
+
+    // MARK: The agent's messages
+
+    /// Open text across the column, with no fill.
+    private var agentLayout: some View {
         VStack(alignment: .leading, spacing: 10) {
             if entry.kind == "image" {
                 imageContent
-            } else if entry.kind == "record" {
-                Label("Unsupported content: \(entry.text)", systemImage: "questionmark.square.dashed")
-                    .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
-                if let details = entry.details {
-                    Text(details).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
-                        .textSelection(.enabled).lineLimit(8)
-                        .accessibilityIdentifier("timeline-record-\(entry.id)")
-                }
-            } else if entry.isTurnInterrupted {
-                Label(entry.text, systemImage: "stop.circle")
-                    .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
-                    .accessibilityIdentifier("timeline-interrupted-\(entry.id)")
             } else {
-                Text(markdown).font(.jost(.body)).textSelection(.enabled)
+                Text(markdown).font(.jost(.body)).lineSpacing(4)
+                    .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("timeline-message-\(entry.id)")
             }
             if entry.truncated {
                 Text("Preview shortened.")
                     .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
             }
         }
-        .foregroundStyle(Theme.text).frame(maxWidth: .infinity, alignment: .leading)
-        .padding(entry.role == "user" ? 16 : 0)
-        .padding(.vertical, entry.role == "user" ? 0 : (entry.isTurnInterrupted ? 4 : 8))
-        .background {
-            if entry.role == "user" {
-                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.lg)
-                    .fill(Theme.subtleFill)
-            }
-        }
-        .padding(.leading, entry.role == "user" ? 32 : 0)
-        .task(id: entry.contentRef) { if entry.kind == "image" { await loadImage() } }
-        .onDisappear { thumbnail = nil }
-        .quickLookPreview($previewURL)
+        .foregroundStyle(Theme.text)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    // MARK: Notices
+
+    @ViewBuilder private var noticeLayout: some View {
+        if entry.kind == "record" {
+            VStack(alignment: .leading, spacing: 6) {
+                TimelineNotice("Unsupported content: \(entry.text)", systemImage: "questionmark.square.dashed")
+                if let details = entry.details {
+                    Text(details).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                        .textSelection(.enabled).lineLimit(8)
+                        .accessibilityIdentifier("timeline-record-\(entry.id)")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            TimelineNotice(entry.text, systemImage: "stop.circle")
+                .accessibilityIdentifier("timeline-interrupted-\(entry.id)")
+        }
+    }
+
+    /// Muted text is too faint on your bubble in some palettes, so captions
+    /// inside it use the text colour.
+    private var captionColor: Color {
+        TimelineTurnLayout.role(entry: entry) == .user ? Theme.text : Theme.textMuted
+    }
+
     @ViewBuilder private var imageContent: some View {
         if let thumbnail {
             Button { previewURL = originalURL } label: {
@@ -159,14 +277,14 @@ struct AgentTimelineEntryView: View {
                     .accessibilityLabel("Session image")
                     .accessibilityIdentifier("timeline-image-\(entry.id)")
             }.buttonStyle(.plain)
-            Text("Tap to open original").font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+            Text("Tap to open original").font(.jost(.caption)).foregroundStyle(captionColor)
         } else if let imageLink {
             Label("Image link", systemImage: "photo")
             Text(imageLink.absoluteString).font(.jost(.caption)).textSelection(.enabled)
             Link("Open image", destination: imageLink)
         } else if let imageError {
             Label("Image", systemImage: "photo")
-            Text(imageError).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+            Text(imageError).font(.jost(.caption)).foregroundStyle(captionColor)
             Button("Retry") { Task { await loadImage() } }
         } else {
             ProgressView("Loading image…")
@@ -191,7 +309,20 @@ struct AgentTimelineEntryView: View {
         }
     }
     private var markdown: AttributedString { Self.sanitizedMarkdown(entry.text) }
+    private var bubbleMarkdown: AttributedString { TimelineMarkdown.bubbleStyled(entry.text) }
     static func sanitizedMarkdown(_ text: String) -> AttributedString { TimelineMarkdown.sanitized(text) }
+}
+
+/// The fill and shape of your bubble. Links inside take the text colour.
+private struct UserBubbleFill: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(Theme.text)
+            .tint(Theme.text)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Theme.userBubble, in: AgentTimelineEntryView.bubbleShape)
+    }
 }
 
 // MARK: - Timeline history scroll anchor & preference keys

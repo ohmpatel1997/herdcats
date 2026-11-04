@@ -571,7 +571,7 @@ enum TimelineSourcePages {
 }
 
 /// Adjacent tool calls form one activity; messages and images keep their order.
-struct TimelineConversationItem: Identifiable {
+struct TimelineConversationItem: Identifiable, Equatable {
     var entries: [AgentTimelineEntry]
     var id: String { entries[0].id }
     var isActivity: Bool { entries[0].kind == "tool" }
@@ -587,6 +587,122 @@ struct TimelineConversationItem: Identifiable {
             }
         }
         return items
+    }
+}
+
+/// Who an item belongs to in the conversation layout.
+enum TimelineTurnLayout {
+    enum Role: Equatable {
+        /// Your messages and images: a bubble on the trailing side.
+        case user
+        /// The agent's messages and images: open text under the agent's name.
+        case agent
+        /// A group of tool steps: a quiet summary row inside the agent's turn.
+        case activity
+        /// Interrupted turns and unsupported records: a centred caption.
+        case notice
+    }
+
+    static func role(_ item: TimelineConversationItem) -> Role {
+        item.isActivity ? .activity : role(entry: item.entries[0])
+    }
+
+    static func role(entry: AgentTimelineEntry) -> Role {
+        if entry.kind == "tool" { return .activity }
+        if entry.kind == "record" || entry.isTurnInterrupted { return .notice }
+        return entry.role == "user" ? .user : .agent
+    }
+}
+
+/// The name shown above each agent turn.
+enum TimelineSpeaker {
+    /// Uses the app's existing display names ("Claude", "Codex", "Agy", "Pi",
+    /// "Cursor"), so a raw identity such as "antigravity_cli" never shows.
+    static func name(agent: String?) -> String {
+        guard let agent, TimelineAgentAvailability.supports(agent: agent) else { return "Agent" }
+        return TimelineAgentAvailability.displayName(for: agent)
+    }
+
+    /// The agent string `AgentKindIcon` has artwork for. Agy's timeline
+    /// identity is "antigravity_cli", but its icon is registered as "agy".
+    static func iconKind(agent: String?) -> String {
+        TimelineAgentAvailability.canonical(agent) == "antigravity_cli" ? "agy" : (agent ?? "")
+    }
+}
+
+/// One child of the Timeline's lazy stack. Speaker names and the space
+/// between turns are rows of their own, outside the message row. Only item
+/// rows carry the scroll id and report their frame, so loading older
+/// messages can add or remove a speaker row, or resize a gap, above the
+/// message being read without moving that message's own content.
+enum TimelineRow: Identifiable, Equatable {
+    /// Space before the item with this id.
+    case gap(beforeItemID: String, height: CGFloat)
+    /// The agent's name above the first item of its turn.
+    case speaker(firstItemID: String, agent: String)
+    case item(TimelineConversationItem)
+
+    /// Prefixed so a bridge id that happens to start with "gap:" can never
+    /// collide with another row. The scroll id of an item is separate.
+    var id: String {
+        switch self {
+        case .gap(let itemID, _): "gap:\(itemID)"
+        case .speaker(let itemID, _): "speaker:\(itemID)"
+        case .item(let item): "item:\(item.id)"
+        }
+    }
+}
+
+enum TimelineRows {
+    /// Space where the speaker changes, for example from you to the agent.
+    static let turnGap: CGFloat = 24
+    /// Space between items of the same turn.
+    static let itemGap: CGFloat = 12
+
+    /// Builds the rows in one pass over the items.
+    ///
+    /// - A gap row sits between every two items: `turnGap` when the speaker
+    ///   changes, `itemGap` otherwise. Tool steps never get a gap between
+    ///   them, because adjacent tool entries are already one activity item.
+    /// - A speaker row sits above the first agent message or tool group after
+    ///   one of your messages, and above the first one in the loaded history.
+    ///   Notices don't start or end a turn.
+    static func build(items: [TimelineConversationItem], agent: String) -> [TimelineRow] {
+        var rows: [TimelineRow] = []
+        rows.reserveCapacity(items.count * 2 + 1)
+        var previous: TimelineTurnLayout.Role?
+        var needsSpeaker = true
+        for item in items {
+            let role = TimelineTurnLayout.role(item)
+            if let previous {
+                let height = side(previous) == side(role) ? itemGap : turnGap
+                rows.append(.gap(beforeItemID: item.id, height: height))
+            }
+            switch role {
+            case .user:
+                needsSpeaker = true
+            case .agent, .activity:
+                if needsSpeaker {
+                    rows.append(.speaker(firstItemID: item.id, agent: agent))
+                    needsSpeaker = false
+                }
+            case .notice:
+                break
+            }
+            rows.append(.item(item))
+            previous = role
+        }
+        return rows
+    }
+
+    private enum Side { case you, agent, notice }
+
+    private static func side(_ role: TimelineTurnLayout.Role) -> Side {
+        switch role {
+        case .user: .you
+        case .agent, .activity: .agent
+        case .notice: .notice
+        }
     }
 }
 

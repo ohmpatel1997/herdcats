@@ -342,6 +342,9 @@ struct PaneDetailView: View {
                         beginKill(pane)
                     }
                 )
+                .background(alignment: .top) {
+                    PaneTopFade(canvas: PaneTopFade.canvas(showsTimeline: timelineMode.wrappedValue))
+                }
             }
         }
     }

@@ -115,6 +115,38 @@ struct AgentTimelineView: View {
         TimelineConversationItem.group(timeline.entries, showsRecords: agent == "codex" || agent == "pi")
     }
 
+    /// The widest the conversation column gets.
+    static let readingWidth: CGFloat = 720
+    /// Space between the conversation and the views before and after it.
+    static let trailingGap: CGFloat = 16
+
+    /// The pane's agent names each turn. Agy's pane says "agy" while its
+    /// timeline identity says "antigravity_cli"; both name and icon handle either.
+    private var speakerAgent: String { agent ?? timeline.identity?.agent ?? "" }
+
+    /// The row that carries an item's scroll id and reports its frame for
+    /// keeping the reading position when older messages load.
+    private func itemRow(_ item: TimelineConversationItem) -> some View {
+        let scope = contentScope
+        return Group {
+            if item.isActivity {
+                TimelineActivityView(entries: item.entries,
+                    loadContent: { reference in try await loadContent(reference, scope: scope) })
+            } else if let entry = item.entries.first {
+                AgentTimelineEntryView(entry: entry, files: contentFiles, scope: scope,
+                    loadContent: { reference in try await loadContent(reference, scope: scope) })
+            }
+        }
+        .id("\(scope):\(item.id)")
+        .background {
+            GeometryReader { row in
+                Color.clear.preference(
+                    key: TimelineEntryFramesPreferenceKey.self,
+                    value: [item.id: row.frame(in: .named("timeline-viewport"))])
+            }
+        }
+    }
+
     var connectionState: AgentTimelineConnectionState {
         AgentTimelineConnectionState(
             phase: appModel.phase, generation: appModel.ownership.transportGeneration)
@@ -170,53 +202,50 @@ struct AgentTimelineView: View {
         ScrollViewReader { proxy in
             GeometryReader { viewport in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 16) {
+                    // Spacing is 0: the conversation's own gap rows space it,
+                    // and the views around it pad themselves by `trailingGap`.
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         if timeline.hasSnapshot(for: connectionState, paneId: paneId, agent: agent) {
+                            let items = conversationItems
+                            let rows = TimelineRows.build(items: items, agent: speakerAgent)
                             if timeline.hasMore {
-                                Text(isPaging ? "Loading earlier messages…" : (pageError ?? "Pull down to load earlier messages"))
-                                    .font(.jost(.caption))
-                                    .foregroundStyle(Theme.textMuted)
-                                    .frame(maxWidth: .infinity)
+                                TimelineNotice(isPaging ? "Loading earlier messages…" : (pageError ?? "Pull down to load earlier messages"),
+                                    systemImage: isPaging ? "hourglass" : (pageError == nil ? "arrow.down" : "exclamationmark.circle"),
+                                    kind: pageError != nil && !isPaging ? .error : .info)
                                     .accessibilityIdentifier("timeline-history-hint")
                                     .accessibilityAction(named: "Load earlier messages") {
                                         Task { await refreshHistory() }
                                     }
+                                    .padding(.bottom, Self.trailingGap)
                             }
-                            if conversationItems.isEmpty {
+                            if items.isEmpty {
                                 ContentUnavailableView("No messages yet", systemImage: "bubble.left")
                             }
-                            ForEach(conversationItems) { item in
-                                let scope = contentScope
-                                Group {
-                                    if item.isActivity {
-                                        TimelineActivityView(entries: item.entries,
-                                            loadContent: { reference in try await loadContent(reference, scope: scope) })
-                                    } else if let entry = item.entries.first {
-                                        AgentTimelineEntryView(entry: entry, files: contentFiles, scope: scope,
-                                            loadContent: { reference in try await loadContent(reference, scope: scope) })
-                                    }
-                                }
-                                .id("\(scope):\(item.id)")
-                                .background {
-                                    GeometryReader { row in
-                                        Color.clear.preference(
-                                            key: TimelineEntryFramesPreferenceKey.self,
-                                            value: [item.id: row.frame(in: .named("timeline-viewport"))])
-                                    }
+                            ForEach(rows) { row in
+                                switch row {
+                                case .gap(_, let height):
+                                    TimelineGapRow(height: height)
+                                case .speaker(let firstItemID, let agent):
+                                    TimelineSpeakerRow(agent: agent, firstItemID: firstItemID)
+                                case .item(let item):
+                                    itemRow(item)
                                 }
                             }
                             if timeline.delayed {
-                                Text("Source update delayed; showing verified history.")
-                                    .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                                TimelineNotice("Source update delayed; showing verified history.",
+                                    systemImage: "clock.badge.exclamationmark", kind: .warning)
+                                    .padding(.top, Self.trailingGap)
                             }
                             if let dialog = timeline.pendingPiDialog {
                                 PiDialogCard(dialog: dialog, isSending: timeline.isPiActionPending,
                                     onSubmit: { answer in Task { await timeline.respondPiDialog(dialog, value: answer) } },
                                     onUseTerminal: onUseTerminal)
                                     .id("\(contentScope):pi-dialog:\(dialog.requestId)")
+                                    .padding(.top, Self.trailingGap)
                             }
                             if let message = timeline.piActionError {
-                                Text(message).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                                TimelineNotice(message, systemImage: "exclamationmark.circle", kind: .error)
+                                    .padding(.top, Self.trailingGap)
                             }
                             if showsApproval, let pending = timeline.pendingApproval {
                                 ApprovalCard(pending: pending, response: approvalResponse) { option in
@@ -224,6 +253,7 @@ struct AgentTimelineView: View {
                                 }
                                 .id("\(contentScope):approval:\(pending.requestId)")
                                 .disabled(approvalResponse.isDisabled)
+                                .padding(.top, Self.trailingGap)
                             }
                             if showsQuestion, let pending = timeline.pendingQuestion {
                                 let questionScope = contentScope
@@ -242,6 +272,7 @@ struct AgentTimelineView: View {
                                         }
                                     })
                                     .id("\(contentScope):question:\(pending.requestId)")
+                                    .padding(.top, Self.trailingGap)
                             }
                         } else {
                             availability
@@ -250,10 +281,14 @@ struct AgentTimelineView: View {
                         // floating Compose bubble without an opaque dock panel.
                         Color.clear
                             .frame(height: bottomOverlayInset + approvalInset)
+                            .padding(.top, Self.trailingGap)
                             .padding(.bottom, DesignSystem.Spacing.base)
                             .id("timeline-bottom")
                     }
                     .scrollTargetLayout()
+                    // A readable line length on iPad and the Duo's inner screen.
+                    .frame(maxWidth: Self.readingWidth)
+                    .frame(maxWidth: .infinity)
                     .padding([.horizontal, .top], DesignSystem.Spacing.base)
                     .padding(.top, topOverlayInset)
                     .frame(minHeight: viewport.size.height + 1, alignment: .top)
@@ -360,7 +395,7 @@ struct AgentTimelineView: View {
                 .onChange(of: timeline.identity) { _, _ in
                     following = true
                     #if DEBUG && targetEnvironment(simulator)
-                        if ScreenshotFixtures.enabled && ScreenshotFixtures.screen == "timeline-history-position" {
+                        if ScreenshotFixtures.enabled && AgentTimelineScreenshotFixture.holdsHistoryPosition {
                             following = false
                         }
                     #endif
@@ -664,5 +699,79 @@ private struct PiDialogCard: View {
         Button(action: action) {
             Text(verbatim: label).frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+// MARK: - Conversation rows
+
+/// The agent's name above its turn. VoiceOver treats it as a heading, so the
+/// rotor can jump from one turn to the next.
+struct TimelineSpeakerRow: View {
+    /// The pane's agent string, for example "claude" or "agy".
+    let agent: String
+    let firstItemID: String
+    @ScaledMetric(relativeTo: .footnote) private var iconSize: CGFloat = 13
+
+    var body: some View {
+        HStack(spacing: 6) {
+            AgentKindIcon(kind: TimelineSpeaker.iconKind(agent: agent), size: iconSize)
+            Text(TimelineSpeaker.name(agent: agent))
+                .font(.jost(.footnote, weight: .semibold))
+                .foregroundStyle(Theme.text)
+        }
+        .padding(.bottom, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("timeline-speaker-\(firstItemID)")
+    }
+}
+
+/// Empty space between two items: wider where the speaker changes.
+struct TimelineGapRow: View {
+    let height: CGFloat
+
+    var body: some View {
+        Color.clear
+            .frame(height: height)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A short centred line about the conversation itself, such as "Turn
+/// interrupted" or "Pull down to load earlier messages". The words stay
+/// muted; only the icon carries the warning or error colour.
+struct TimelineNotice: View {
+    enum Kind { case info, warning, error }
+
+    let text: String
+    let systemImage: String
+    var kind: Kind = .info
+
+    init(_ text: String, systemImage: String, kind: Kind = .info) {
+        self.text = text
+        self.systemImage = systemImage
+        self.kind = kind
+    }
+
+    private var iconColor: Color {
+        switch kind {
+        case .info: Theme.textMuted
+        case .warning: Theme.statusWorking
+        case .error: Theme.statusBlocked
+        }
+    }
+
+    var body: some View {
+        Label {
+            Text(text)
+                .foregroundStyle(Theme.textMuted)
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(iconColor)
+        }
+        .font(.jost(.caption))
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
     }
 }

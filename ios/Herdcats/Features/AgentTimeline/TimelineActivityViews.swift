@@ -12,21 +12,29 @@ struct TimelineActivityView: View {
     @State private var previewLoading = false
     @State private var showsDetails = false
     @State private var fileChanges: [TimelineFileChange] = []
+    /// The icon column grows with the title at larger text sizes.
+    @ScaledMetric(relativeTo: .subheadline) private var iconWidth: CGFloat = 24
     private var failures: Int { entries.filter { $0.status == "failed" }.count }
 
     var body: some View {
         VStack(spacing: 12) {
+            // A quiet summary row: muted text on a thin rail, so tool steps
+            // read as part of the agent's turn rather than as replies.
             Button { showsDetails = true } label: {
-                HStack(spacing: 12) {
-                    if entries.contains(where: TimelineActivitySummary.isRunning) {
-                        ProgressView()
-                    } else {
-                        Image(systemName: failures > 0 ? "exclamationmark.circle" : "wrench.and.screwdriver")
-                            .foregroundStyle(failures > 0 ? Theme.destructive : Theme.textMuted)
+                HStack(spacing: 10) {
+                    Group {
+                        if entries.contains(where: TimelineActivitySummary.isRunning) {
+                            CircularArcSpinner(size: 15, color: Theme.statusWorking)
+                        } else {
+                            Image(systemName: failures > 0 ? "exclamationmark.circle" : "wrench.and.screwdriver")
+                                .font(.jost(.subheadline))
+                                .foregroundStyle(failures > 0 ? Theme.destructive : Theme.textMuted)
+                        }
                     }
-                    VStack(alignment: .leading, spacing: 4) {
+                    .frame(width: iconWidth)
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(TimelineActivitySummary.title(entries))
-                            .font(.jost(.subheadline, weight: .medium))
+                            .font(.jost(.subheadline))
                         if failures > 0 {
                             Text("\(failures) failed or interrupted")
                                 .font(.jost(.caption)).foregroundStyle(Theme.destructive)
@@ -34,9 +42,14 @@ struct TimelineActivityView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "chevron.right").font(.jost(.caption, weight: .medium))
-                        .foregroundStyle(Theme.textMuted)
                 }
-                .foregroundStyle(Theme.text).padding(.vertical, 16)
+                .foregroundStyle(Theme.textMuted)
+                .padding(.leading, 10)
+                .padding(.vertical, 10)
+                .frame(minHeight: 44)
+                .background(alignment: .leading) {
+                    Capsule().fill(Theme.subtleFill).frame(width: 2)
+                }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

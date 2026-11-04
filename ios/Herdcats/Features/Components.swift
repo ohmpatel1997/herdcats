@@ -259,6 +259,38 @@ struct AgentKindIcon: View {
     }
 }
 
+// MARK: - Pane top fade
+
+/// Sits behind the pane switcher. It fills the switcher's strip with the
+/// pane's canvas and fades 16pt into the content below, so messages or
+/// output scrolling under the switcher never run right up against the
+/// cards and chips.
+struct PaneTopFade: View {
+    static let height: CGFloat = 16
+    /// The colour of the surface under the switcher.
+    let canvas: Color
+
+    /// The Timeline uses the app canvas; the terminal is always drawn with
+    /// the dark palette's background, in light mode too.
+    static func canvas(showsTimeline: Bool) -> Color {
+        if showsTimeline { return Theme.background }
+        let terminal = TerminalPalette(palette: AppThemePreferences.shared.dark, dark: true)
+        return Color(uiColor: UIColor(hex: terminal.background))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            canvas
+            LinearGradient(colors: [canvas, canvas.opacity(0)], startPoint: .top, endPoint: .bottom)
+                .frame(height: Self.height)
+        }
+        // Hang the fade below the switcher's own frame.
+        .padding(.bottom, -Self.height)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Quiet list rows
 
 extension VerticalAlignment {

@@ -28,7 +28,7 @@ final class AgentTimelineUITests: XCTestCase {
             app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-offline-transition", "-paneShowComposeByDefault", "YES"]
                 + (empty ? ["-hc.empty-terminal-output"] : [])
             launch(app)
-            XCTAssertTrue(app.staticTexts["Review the connection guidance and make it clearer in light mode."].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.descendants(matching: .any)["timeline-message-message:user"].firstMatch.waitForExistence(timeout: 5))
             if terminal { app.buttons["Terminal"].tap() }
             if empty { XCTAssertTrue(app.staticTexts["No output yet"].waitForExistence(timeout: 5)) }
             let composer = app.textFields[terminal ? "pane-compose-field" : "timeline-compose-field"]
@@ -778,7 +778,7 @@ final class AgentTimelineUITests: XCTestCase {
         let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
         let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
         for _ in 0..<4 { start.press(forDuration: 0.05, thenDragTo: end) }
-        XCTAssertTrue(app.staticTexts["Earlier conversation message."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["timeline-message-message:earlier"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["timeline-history-hint"].exists)
         app.terminate()
     }
@@ -793,7 +793,7 @@ final class AgentTimelineUITests: XCTestCase {
         let add = app.buttons["pane-add-button"]
         let card = add.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         card.press(forDuration: 0.05, thenDragTo: card.withOffset(CGVector(dx: 0, dy: -60)))
-        let marker = app.staticTexts["Review the connection guidance and make it clearer in light mode."]
+        let marker = app.descendants(matching: .any)["timeline-message-message:user"].firstMatch
         XCTAssertTrue(marker.exists)
         let originalY = marker.frame.minY
         let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
@@ -806,7 +806,93 @@ final class AgentTimelineUITests: XCTestCase {
         XCTAssertTrue(marker.exists)
         XCTAssertEqual(marker.frame.minY, originalY, accuracy: 4,
                        "Prepending a page must preserve the reading position")
-        XCTAssertFalse(app.staticTexts["Earlier conversation message."].isHittable)
+        XCTAssertFalse(app.descendants(matching: .any)["timeline-message-message:earlier"].firstMatch.isHittable)
+        app.terminate()
+    }
+
+    func testLoadingEarlierMessagesMidTurnPreservesVisibleOffset() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-history-midturn", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(app)
+        let scroll = app.scrollViews["agent-timeline-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        // Collapse the pane strip separately, before measuring the reading position.
+        let add = app.buttons["pane-add-button"]
+        let card = add.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        card.press(forDuration: 0.05, thenDragTo: card.withOffset(CGVector(dx: 0, dy: -60)))
+        // The loaded history starts mid-turn, so the agent's name sits above it.
+        let speaker = app.descendants(matching: .any)["timeline-speaker-message:midturn"].firstMatch
+        XCTAssertTrue(speaker.waitForExistence(timeout: 5))
+        let marker = app.descendants(matching: .any)["timeline-message-message:midturn"].firstMatch
+        XCTAssertTrue(marker.exists)
+        XCTAssertLessThanOrEqual(speaker.frame.maxY, marker.frame.minY + 1)
+        let originalY = marker.frame.minY
+        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+        let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
+        for _ in 0..<4 {
+            start.press(forDuration: 0.05, thenDragTo: end)
+            if app.staticTexts["Loading earlier messages…"].exists || !app.staticTexts["timeline-history-hint"].exists { break }
+        }
+        XCTAssertTrue(app.staticTexts["timeline-history-hint"].waitForNonExistence(timeout: 15))
+        XCTAssertTrue(marker.exists)
+        XCTAssertEqual(marker.frame.minY, originalY, accuracy: 4,
+                       "Removing the speaker row above the first message must not move it")
+        // The older page ends mid-turn too, so the turn's name moved up with it.
+        XCTAssertFalse(app.descendants(matching: .any)["timeline-speaker-message:midturn"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["timeline-message-message:earlier"].firstMatch.isHittable)
+        let capture = XCTAttachment(screenshot: app.screenshot())
+        capture.name = "Timeline history loaded mid-turn"
+        capture.lifetime = .keepAlways
+        add(capture)
+        app.terminate()
+    }
+
+    func testSpeakerRowsNameEachTurnAndYourMessagesSayYou() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-conversation", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(app)
+        let scroll = app.scrollViews["agent-timeline-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        let mine = app.descendants(matching: .any)["timeline-message-message:user"].firstMatch
+        XCTAssertTrue(mine.waitForExistence(timeout: 5))
+        XCTAssertEqual(mine.label, "You")
+        XCTAssertEqual(mine.value as? String, "Review the connection guidance and make it clearer in light mode.")
+        let reply = app.descendants(matching: .any)["timeline-message-message:assistant"].firstMatch
+        XCTAssertTrue(reply.exists)
+        // Your bubble hugs the trailing side; the agent's reply starts at the leading edge.
+        XCTAssertGreaterThan(mine.frame.minX, scroll.frame.minX + 40)
+        XCTAssertGreaterThan(mine.frame.maxX, scroll.frame.midX)
+        XCTAssertLessThan(reply.frame.minX, scroll.frame.minX + 24)
+        // The agent is named once, above the first reply of its turn.
+        let speaker = app.descendants(matching: .any)["timeline-speaker-message:assistant"].firstMatch
+        XCTAssertTrue(speaker.exists)
+        XCTAssertEqual(speaker.label, "Claude")
+        XCTAssertLessThanOrEqual(speaker.frame.maxY, reply.frame.minY + 1)
+        XCTAssertGreaterThan(speaker.frame.minY, mine.frame.maxY)
+        XCTAssertFalse(app.descendants(matching: .any)["timeline-speaker-message:user"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["timeline-speaker-tool:read"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["timeline-speaker-message:summary"].exists)
+        XCTAssertTrue(app.buttons["timeline-tool-tool:read"].exists)
+        XCTAssertTrue(app.staticTexts["Ran a command · Used a tool"].exists)
+        let first = XCTAttachment(screenshot: app.screenshot())
+        first.name = "Timeline who said what"
+        first.lifetime = .keepAlways
+        add(first)
+        // The second turn: your image and message, then the agent named again.
+        let fix = app.descendants(matching: .any)["timeline-speaker-message:fix"].firstMatch
+        for _ in 0..<4 where !fix.exists { scroll.swipeUp() }
+        XCTAssertTrue(fix.waitForExistence(timeout: 5))
+        XCTAssertEqual(fix.label, "Claude")
+        let followup = app.descendants(matching: .any)["timeline-message-message:followup"].firstMatch
+        XCTAssertTrue(followup.exists)
+        XCTAssertEqual(followup.label, "You")
+        XCTAssertGreaterThan(fix.frame.minY, followup.frame.maxY)
+        XCTAssertTrue(app.descendants(matching: .any)["timeline-message-content:image"].firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["timeline-speaker-content:image"].exists)
+        let second = XCTAttachment(screenshot: app.screenshot())
+        second.name = "Timeline second turn"
+        second.lifetime = .keepAlways
+        add(second)
         app.terminate()
     }
 

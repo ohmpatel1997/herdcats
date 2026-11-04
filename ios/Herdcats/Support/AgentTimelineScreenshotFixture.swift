@@ -26,10 +26,17 @@
             if reference == unfamiliarRef { return unfamiliarBlock }
             throw AgentBridgeError.unavailable("content_unavailable")
         }
+        /// History screens that hold the reading position while an older
+        /// page loads, so a UI test can measure that nothing moved.
+        static var holdsHistoryPosition: Bool {
+            ["timeline-history-position", "timeline-history-midturn"].contains(ScreenshotFixtures.screen)
+        }
         static func historyPage(paneId: String, generation: UInt64) throws -> AgentBridgePayload {
             var rows: [[String: Any]] = [["id": "message:earlier", "kind": "message", "role": "user",
                                           "text": "Earlier conversation message.", "truncated": false]]
-            if ScreenshotFixtures.screen == "timeline-history-position" {
+            // Both pages end with the agent's messages. In the mid-turn screen the
+            // loaded history also starts with one, so the turn continues across pages.
+            if holdsHistoryPosition {
                 rows += (0..<8).map { index in
                     ["id": "message:older-\(index)", "kind": "message", "role": "assistant",
                      "text": "Earlier update \(index + 1). " + String(repeating: "Reviewed the connection and checked the implementation. ", count: 4),
@@ -259,7 +266,21 @@
                      "details": "{\"file_path\":\"/project/README.md\"}", "text": "File updated.", "truncated": false]
                 ], at: index)
             }
-            if ScreenshotFixtures.screen == "timeline-history-position" {
+            if ScreenshotFixtures.screen == "timeline-history-midturn" {
+                // Starts in the middle of the agent's turn: a speaker row sits
+                // above the first message until the older page loads.
+                entries = [
+                    ["id": "message:midturn", "kind": "message", "role": "assistant",
+                     "text": "Continuing the review: the host key step now explains what a fingerprint is and when it changes.",
+                     "truncated": false],
+                    ["id": "message:midturn-detail", "kind": "message", "role": "assistant",
+                     "text": "The warning for a changed key keeps the original wording, so existing tests still match.",
+                     "truncated": false],
+                    ["id": "message:midturn-user", "kind": "message", "role": "user",
+                     "text": "Good. Check the light mode contrast too.", "truncated": false],
+                ]
+            }
+            if holdsHistoryPosition {
                 entries += (0..<3).map { index in
                     ["id": "message:recent-\(index)", "kind": "message", "role": "assistant",
                      "text": "Recent update \(index + 1). " + String(repeating: "Reviewed the connection and checked the implementation. ", count: 4),
@@ -272,6 +293,30 @@
                      "text": "Session update \(index + 1). Reviewed the implementation, checked the changed files, and confirmed the result with a focused test run.",
                      "truncated": false] as [String: Any]
                 }
+            }
+            if ScreenshotFixtures.screen == "timeline-conversation" {
+                // Two turns with a tool run, a link in your message and an image you sent.
+                entries = [
+                    ["id": "message:user", "kind": "message", "role": "user",
+                     "text": "Review the connection guidance and make it clearer in light mode.", "truncated": false],
+                    ["id": "message:assistant", "kind": "message", "role": "assistant",
+                     "text": "I checked the onboarding flow. The new guidance explains **host key verification** before connecting and keeps the SSH steps easy to follow.",
+                     "truncated": false],
+                    ["id": "tool:read", "kind": "tool", "tool_name": "Read", "status": "completed",
+                     "text": "Connection guidance reviewed.",
+                     "details": "{\"path\":\"ios/Herdcats/Features/Connect/HostKeyVerificationView.swift\"}", "truncated": false],
+                    ["id": "tool:test", "kind": "tool", "tool_name": "Bash", "status": "completed",
+                     "text": "24 tests passed.", "details": "{\"description\":\"Run the connection tests\"}", "truncated": false],
+                    ["id": "message:summary", "kind": "message", "role": "assistant",
+                     "text": "The changes are ready for review.", "truncated": false],
+                    ["id": "content:image", "kind": "image", "role": "user", "text": "Image", "truncated": false,
+                     "content_ref": imageRef, "record_refs": [imageRef]],
+                    ["id": "message:followup", "kind": "message", "role": "user",
+                     "text": "The fingerprint row is cut off on my phone. The [accessibility guidelines](https://developer.apple.com/design/human-interface-guidelines/accessibility) cover this.",
+                     "truncated": false],
+                    ["id": "message:fix", "kind": "message", "role": "assistant",
+                     "text": "Fixed. The fingerprint now wraps onto a second line instead of being cut off.", "truncated": false],
+                ]
             }
             if ScreenshotFixtures.screen == "timeline-rich-content" {
                 entries += [
