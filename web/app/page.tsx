@@ -46,11 +46,11 @@ export default function Home() {
 
         {/* Hero copy sits in the sky above the meadow */}
         <section className="hero">
-          <span className="sign-badge">iPhone · Beta</span>
+          <span className="sign-badge">iPhone · iPad · Beta</span>
           <h1 className="hero-title">Herdcats</h1>
           <p className="hero-subtitle">Tame your autonomous agents from your pocket.</p>
           <p className="hero-description">
-            Herdcats is an iPhone client for Herdr. It connects to your machine over SSH, so you can read agent output, answer a blocked prompt, and send input while you are away from your desk.
+            Herdcats is an iPhone and iPad client for Herdr. It connects to your machine over SSH, to the Herdr TUI or Herdr Core, so you can read agent output, answer a blocked prompt, and send input while you are away from your desk.
           </p>
           <div className="hero-actions">
             <a

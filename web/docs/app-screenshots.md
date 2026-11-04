@@ -97,3 +97,17 @@ The existing iPhone source and the light iPhone-only creatives are preserved.
 The raw iPad manifest records the source commit, app and fixture hashes, and
 all 14 landscape captures. See the repository README for dedicated simulator
 capture commands and the Device Hub fallback for Duo inner.
+
+### Large-device website copies
+
+The Features page and Support's iPad and iPhone Duo answer use two WebP
+copies of the tracked reference captures, resized to 1400 px wide with
+`cwebp -q 90 -resize 1400 0`. Their contents are unchanged. They are dark
+mode only, because no light iPad or Duo captures exist.
+
+| Asset | Source | Source SHA-256 |
+| --- | --- | --- |
+| `public/assets/app/ipad-split.webp` | `ios/maestro/screenshots-output/ipad/13_split_spaces.png` | `9698e0c446a6d42f0b76d47fb80e3add99b68d57a0dca33074e8a9167bd631eb` |
+| `public/assets/app/duo-split.webp` | `ios/maestro/screenshots-output/iphone-duo/inner/14_split_agents.png` | `27ce5230a4bda767e66687ea744387dfe09bc9095e8243c0443ab369890355ab` |
+
+Regenerate both after a new large-device capture run.

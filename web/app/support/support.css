@@ -362,3 +362,5 @@
     grid-template-columns: 1fr;
   }
 }
+.app-screenshots-wide { grid-template-columns: minmax(0, 1fr); max-width: 720px; margin-inline: auto; gap: 28px; }
+@media (max-width: 600px) { .app-screenshots-wide { max-width: 100%; } }

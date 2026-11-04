@@ -3,3 +3,5 @@
 .figure a:focus-visible { outline: 3px solid var(--focus); outline-offset: 5px; }
 .image { display: block; width: 100%; max-width: 280px; height: auto; aspect-ratio: 600 / 1304; border: 1px solid var(--border); border-radius: 24px; background: var(--bg-deep); }
 .caption { margin: 14px auto 0; max-width: 32ch; color: var(--text-muted); font-size: 14px; line-height: 1.5; text-align: center; }
+.wide a, .wide .image { max-width: 100%; border-radius: 16px; }
+.wide .caption { max-width: 48ch; }

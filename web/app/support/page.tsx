@@ -88,6 +88,8 @@ const supportSections = [
     "label": "Spaces and panes",
     "depth": 1
   },
+  { "id": "using-app-tui-or-core", "label": "TUI or Herdr Core", "depth": 1 },
+  { "id": "using-app-ipad-duo", "label": "iPad and iPhone Duo", "depth": 1 },
   {
     "id": "using-app-when-should-i-use-live-compose-or-voice",
     "label": "Views and Compose",
@@ -252,6 +254,8 @@ const supportSections = [
     "label": "Herdr not found",
     "depth": 1
   },
+  { "id": "troubleshooting-core-only-mac", "label": "Herdr Core–only Mac", "depth": 1 },
+  { "id": "troubleshooting-offline-retry", "label": "Offline and Retry", "depth": 1 },
   {
     "id": "troubleshooting-timeline-helper-missing-or-install-failed",
     "label": "Herdcats Bridge",
@@ -338,7 +342,7 @@ export default function SupportPage() {
   return (
     <div className="support-wrapper" ref={scrollRoot}>
       <SiteHeader current="support" title="Support">
-        <p>Find answers, connect your iPhone to Herdr, and switch between your machines.</p>
+        <p>Find answers, connect your iPhone or iPad to Herdr, and switch between your machines.</p>
         <p>Still stuck? Email <a href="mailto:hello@enchantinglabs.com">hello@enchantinglabs.com</a> or open an issue on <a href="https://github.com/zhiyao/herdcats/issues" target="_blank" rel="noopener noreferrer">GitHub</a>. Leave out passwords, keys and passphrases.</p>
       </SiteHeader>
 
@@ -375,17 +379,18 @@ export default function SupportPage() {
         <div className="faq-list">
         <div className="faq-item">
         <h4 id="faq-what-is-herdcats" className="faq-question">What is Herdcats?</h4>
-        <p>Herdcats lets you use Herdr from your iPhone: browse your spaces and agents, read terminal output, and send messages, keystrokes, dictation, and photos. Save a separate SSH connection for each computer and switch between them in the machine selector. It requires iOS 17 or later.</p>
+        <p>Herdcats lets you use Herdr from your iPhone or iPad: browse your spaces and agents, read terminal output, and send messages, keystrokes, dictation, and photos. Save a separate SSH connection for each computer and switch between them in the machine selector. It requires iOS 17 or later. On iPad and the unfolded iPhone Duo, you can keep two panes open side by side.</p>
         </div>
         <div className="faq-item">
         <h4 id="faq-what-is-herdr-and-how-is-it-different-from-herdcats" className="faq-question">What is Herdr, and how is it different from Herdcats?</h4>
-        <p>Herdr runs on your computer and organizes the spaces, agents, and terminal panes you work with. Herdcats is the iPhone app that connects to it. Your agents and their work stay on the computer.</p>
+        <p>Herdr runs on your computer and organizes the spaces, agents, and terminal panes you work with. Herdcats is the iPhone and iPad app that connects to it. Your agents and their work stay on the computer.</p>
+        <p>Herdcats can connect to either Herdr runtime: the Herdr TUI (the <code>herdr</code> command) or Herdr Core (the <code>hc</code> command, which the Herdr desktop app installs and runs). See <a href="#using-app-tui-or-core">TUI or Herdr Core</a>.</p>
         </div>
         <div className="faq-item">
         <h4 id="faq-what-do-i-need-before-i-connect" className="faq-question">What do I need before I connect?</h4>
         <p>You need:</p>
         <ul>
-        <li>A computer with Herdr installed and its default session running.</li>
+        <li>A computer running Herdr: the Herdr TUI with its default session started, or Herdr Core, for example through the Herdr desktop app.</li>
         <li>SSH access enabled on that computer. SSH lets the app connect securely.</li>
         <li>A network connection that lets your iPhone reach the computer.</li>
         <li>The computer&#x27;s hostname or IP address, SSH port, account username, and   password or a supported SSH private key.</li>
@@ -395,8 +400,8 @@ export default function SupportPage() {
         </div>
         <div className="faq-item">
         <h4 id="faq-can-i-use-herdcats-if-my-computer-doesn-t-have-herdr-installed" className="faq-question">Can I use Herdcats if my computer doesn&#x27;t have Herdr installed?</h4>
-        <p>No. Herdcats needs Herdr on the computer to show spaces, agents, and panes. SSH access alone is not enough. If SSH connects but Herdr is missing, the app reports <strong>“herdr was not found on the remote machine.”</strong></p>
-        <p>Install Herdr on that computer, start its default session using the account that you connect with, then try again. Herdcats does not install Herdr for you or provide a standalone SSH terminal. If someone else manages the computer, ask them to set up Herdr and SSH access for your account.</p>
+        <p>No. Herdcats needs Herdr on the computer to show spaces, agents, and panes. SSH access alone is not enough. If SSH connects but Herdr is missing, the app shows <strong>“SSH worked. Herdr was not found.”</strong></p>
+        <p>Install the Herdr TUI or Herdr Core on that computer using the account that you connect with, start it, then try again. If the computer already runs the Herdr desktop app, don&rsquo;t install the TUI as well; see <a href="#troubleshooting-core-only-mac">Herdr Core–only Mac</a>. Herdcats does not install Herdr for you or provide a standalone SSH terminal. If someone else manages the computer, ask them to set up Herdr and SSH access for your account.</p>
         </div>
         <div className="faq-item">
         <h4 id="faq-do-i-need-tailscale" className="faq-question">Do I need Tailscale?</h4>
@@ -404,7 +409,7 @@ export default function SupportPage() {
         </div>
         <div className="faq-item">
         <h4 id="faq-do-i-need-any-other-software-on-my-computer" className="faq-question">Do I need any other software on my computer?</h4>
-        <p>Herdr and SSH are required. Terminal, Compose, voice, and photos need nothing else. The optional Timeline view does: Herdcats Bridge (<code>herdcats-bridge</code>) on the computer you connect to directly. A terminal pane is a scrolling log; Herdcats Bridge reads supported Claude, Codex, Agy, Pi, and Cursor Agent sessions&#x27; structured transcripts so Herdcats can show them as readable messages, tool activity, and images instead. It is installed only when you tap Install, runs only while Timeline is open, and everything else works without it. The optional <code>quota-axi</code> tool adds provider quota information.</p>
+        <p>Herdr and SSH are required. Terminal, Compose, voice, and photos need nothing else. Herdr Core connections never need anything else. The optional Timeline view, for TUI connections, does: Herdcats Bridge (<code>herdcats-bridge</code>) on the computer you connect to directly. A terminal pane is a scrolling log; Herdcats Bridge reads supported Claude, Codex, Agy, Pi, and Cursor Agent sessions&#x27; structured transcripts so Herdcats can show them as readable messages, tool activity, and images instead. It is installed only when you tap Install, runs only while Timeline is open, and everything else works without it. The optional <code>quota-axi</code> tool adds provider quota information.</p>
         </div>
         </div>
         <h3 id="privacy" className="faq-category">Signing in and privacy</h3>
@@ -439,14 +444,36 @@ export default function SupportPage() {
         <div className="faq-list">
         <div className="faq-item">
         <h4 id="using-app-what-are-spaces-agents-tabs-and-panes" className="faq-question">What are spaces, agents, tabs, and panes?</h4>
-        <p>These are the items in your Herdr session. Spaces organize your work; tabs contain terminal panes; agents run in those panes. Herdcats lets you navigate that work from your phone.</p>
+        <p>These are the items in your Herdr session. Spaces organize your work; tabs contain terminal panes; agents run in those panes. Herdcats lets you navigate that work from your phone. In a space, tap a pane in the pane switcher to open it. On iPhone, swipe right from the left edge to go back to the list.</p>
+        </div>
+        <div className="faq-item">
+        <h4 id="using-app-tui-or-core" className="faq-question">Should I connect with the TUI or Herdr Core?</h4>
+        <p>Each saved connection uses one runtime. Pick it under <strong>Herdr</strong> in Connection Settings:</p>
+        <ul>
+        <li><strong>Auto</strong> (the default for new machines) checks the computer for both runtimes over SSH and saves an entry for each one it finds. If both are installed it connects with the TUI.</li>
+        <li><strong>TUI</strong> runs the <code>herdr</code> command over SSH and uses Herdr&rsquo;s default session. Timeline, phone answers, and model controls need this runtime and Herdcats Bridge.</li>
+        <li><strong>Herdr Core</strong> uses <code>hc connect</code>. Use it when the computer runs the Herdr desktop app or a standalone Herdr Core. It shows desktop spaces and tabs when their layout is available, plus <strong>Other terminals</strong> for terminals outside a space. It needs no Bridge.</li>
+        </ul>
+        <p>Herdr Core panes use the same terminal view, keys, Compose, dictation, and photos. Herdr Core can&rsquo;t receive raw text, so live typing sends key presses; for shifted symbols and non-ASCII characters the app asks you to use Compose. A Herdr Core connection never falls back to the TUI.</p>
+        <p>A computer saved with both runtimes appears once, as <strong>TUI + Herdr Core</strong>, and opens with the runtime you used last. Long-press it on the connection screen to choose <strong>Connect with TUI</strong> or <strong>Connect with Herdr Core</strong>, or pick the runtime from the machine menu. Connections saved before Herdr Core support stay TUI.</p>
+        </div>
+        <div className="faq-item">
+        <h4 id="using-app-ipad-duo" className="faq-question">How do split panes work on iPad and the iPhone Duo?</h4>
+        <p>On iPad and the unfolded iPhone Duo, Spaces and Agents show the list on the left and the selected pane beside it. On iPad the tab switcher is a pill at the bottom of the list; on the Duo it stays at the screen edge. Hide the list with the sidebar button, and swipe right from the leading edge to bring it back.</p>
+        <p>To open two panes, use a row&rsquo;s menu (<strong>Open on Left</strong>, <strong>Open on Right</strong>, or <strong>Replace</strong>), the Split button, or drag a row onto the left or right half of the detail area. Each pane has its own header with an <strong>L</strong> or <strong>R</strong> tag, and the list shows the same tags next to open rows. Tap a pane to focus it; the keyboard moves with focus. Drag the divider to resize it to a third, half, or two thirds.</p>
+        <p>In Spaces, expand a space to see its tabs and panes. Folding the Duo or narrowing the window keeps the pane you were using open. The iPhone layout is unchanged: one pane at a time, portrait only. iPad supports all orientations.</p>
+        <div className="app-screenshots app-screenshots-wide">
+          <AppScreenshot screen="ipad-split" alt="iPad in landscape with the Spaces list beside two conversation panes tagged L and R" caption="iPad: the Spaces list beside two active panes." />
+          <AppScreenshot screen="duo-split" alt="Unfolded iPhone Duo with terminal output on the left and a Codex conversation on the right" caption="iPhone Duo, unfolded: terminal output beside a conversation." />
+        </div>
+        <p className="capture-note">Dark-mode simulator captures with sample sessions, 3 November 2026.</p>
         </div>
         <div className="faq-item">
         <h4 id="using-app-when-should-i-use-live-compose-or-voice" className="faq-question">How do Timeline, Terminal, and Compose fit together?</h4>
         <p>Timeline and Terminal are two ways to read the same agent session. Compose is where you draft a message, and works with either view.</p>
         <ul>
         <li><strong>Timeline:</strong> read messages and tool activity in a conversation layout that follows your app theme. For supported agents, use the terminal or speech-bubble button at the top to switch views.</li>
-        <li><strong>Terminal:</strong> see the agent&rsquo;s own terminal UI. Tap its output to type directly, or use the toolbar for special keys.</li>
+        <li><strong>Terminal:</strong> see the agent&rsquo;s own terminal UI. Tap its output to type directly, or use the toolbar for special keys. After you scroll back into history, tap the round down-arrow button to jump to the newest output.</li>
         <li><strong>Compose:</strong> write and review a message before tapping Send. Tap the compose button in the toolbar to open it. Add photos with the attachment button.</li>
         <li><strong>Voice:</strong> tap the microphone to dictate, then the checkmark to finish recording. The transcript opens in Compose for you to edit and send.</li>
         </ul>
@@ -524,16 +551,17 @@ export default function SupportPage() {
         </div>
         <div className="faq-item">
         <h4 id="using-app-what-happens-when-i-switch-apps-or-lock-my-phone" className="faq-question">What happens when I switch apps or lock my phone?</h4>
-        <p>Herdcats pauses output refreshes while it is in the background. Return to the app to see refreshed output. Leaving the app does not itself stop the agents running on your computer.</p>
+        <p>Herdcats pauses output refreshes while it is in the background. Return to the app to see refreshed output. Timeline keeps the conversation it already loaded for that pane while it reconnects. Leaving the app does not itself stop the agents running on your computer.</p>
+        <p>If the connection drops, a status banner appears at the top. Output you already loaded stays on screen, with a card underneath that explains what happened and offers <strong>Retry</strong>. See <a href="#troubleshooting-offline-retry">Offline and Retry</a>.</p>
         </div>
         <div className="faq-item">
         <h4 id="using-app-can-i-choose-a-different-herdr-session" className="faq-question">Can I choose a different Herdr session?</h4>
-        <p>Not currently. Herdcats uses Herdr&#x27;s default session, which must be running and accessible to the account you sign in with.</p>
+        <p>Not currently. TUI connections use Herdr&#x27;s default session, which must be running and accessible to the account you sign in with. Herdr Core connections show the terminals Herdr Core runs for that account.</p>
         </div>
         <div className="faq-item">
         <h4 id="using-app-can-i-switch-between-computers-without-signing-in-to-each-one-on-my-phone" className="faq-question">How do I switch between computers?</h4>
         <p>Save an SSH connection for each computer in Herdcats, then choose one from the machine selector. Each connection has its own host, port, account, and credentials; the app connects directly to the selected computer. You can give saved connections names and arrange their order. Auto-connect uses the last-used computer.</p>
-        <p>Install Herdr and enable SSH on each computer. Bridge, phone-answer setup, photo uploads, and quota information belong to the computer you are connected to.</p>
+        <p>Install Herdr and enable SSH on each computer. If a computer has both the TUI and Herdr Core, it still appears once; see <a href="#using-app-tui-or-core">TUI or Herdr Core</a>. Bridge, phone-answer setup, photo uploads, and quota information belong to the computer you are connected to.</p>
         </div>
         <div className="faq-item">
         <h4 id="using-app-how-do-i-add-another-machine" className="faq-question">How do I add another machine?</h4>
@@ -546,10 +574,10 @@ export default function SupportPage() {
         <section id="connect" aria-labelledby="connect-title" className="guide-card connection-guide">
         <h2 id="connect-title">How to connect</h2>
         <ol className="connection-steps">
-        <li>Install <a href="https://herdr.dev">Herdr</a> on your computer and start its default session with the account you will use in Herdcats.</li>
+        <li>Set up Herdr on your computer with the account you will use in Herdcats: install the <a href="https://herdr.dev">Herdr TUI</a> and start its default session, or run <a href="https://github.com/herdrdev/herdr-core">Herdr Core</a>, for example through the Herdr desktop app.</li>
         <li>Enable SSH access using the setup guide for your computer below. On a Mac, follow <a href="#macos-setup">Enable Remote Login</a>.</li>
         <li>Connect your iPhone and computer to a network where they can reach each other. Tailscale is recommended.</li>
-        <li>In Herdcats, enter the hostname or IP address, SSH port, username, and password or supported private key.</li>
+        <li>In Herdcats, leave <strong>Herdr</strong> on <strong>Auto</strong> (or choose TUI or Herdr Core), then enter the hostname or IP address, SSH port, username, and password or supported private key.</li>
         <li>Compare the server fingerprint with one obtained directly from your computer or its administrator, then approve it only if they match.</li>
         </ol>
         <p className="connection-note">Using more than one computer? Save a separate SSH connection for each, then switch with the machine selector.</p>
@@ -563,7 +591,7 @@ export default function SupportPage() {
               </p>
               <p className="prereq-text">
                 Before you start: install <a href="https://herdr.dev" target="_blank" rel="noopener noreferrer">Herdr</a> on
-                the Mac and keep a Herdr session running. Herdcats drives the <code>herdr</code> CLI over SSH.
+                the Mac and keep a Herdr session running, or run the Herdr desktop app for Herdr Core. Herdcats drives the <code>herdr</code> or <code>hc</code> command over SSH.
               </p>
 
               <ol className="step-list">
@@ -835,17 +863,45 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
                 </div>
 
                 <div className="faq-item">
-                  <h3 id="troubleshooting-connection-timeout-host-unreachable"><TriangleAlert className="warn-icon" size={18} strokeWidth={2.25} aria-hidden="true" /><span>Connection Timeout / Host Unreachable</span></h3>
+                  <h3 id="troubleshooting-connection-timeout-host-unreachable"><TriangleAlert className="warn-icon" size={18} strokeWidth={2.25} aria-hidden="true" /><span>&ldquo;Timed out reaching the host&rdquo; / Host unreachable</span></h3>
                   <p>
-                    If connecting over Wi-Fi, ensure your phone and computer are on the same subnet. For remote access across networks, install <strong>Tailscale</strong> on both devices to connect by MagicDNS hostname.
+                    Herdcats waits 10 seconds for the SSH server to answer. If nothing answers, it shows &ldquo;Timed out reaching the host — check the IP address and that SSH (Remote Login) is enabled on the machine.&rdquo;
                   </p>
+                  <ul>
+                    <li>Check the hostname or IP address in Connection Settings. With Tailscale, the MagicDNS name from the Tailscale app is the most reliable choice.</li>
+                    <li>Confirm SSH is on: on a Mac, <a href="#macos-setup-enable-remote-login">Remote Login</a>; on Linux, <code>systemctl status ssh</code> (or <code>sshd</code>).</li>
+                    <li>Make sure the computer is awake and both devices are connected to Tailscale, or on the same Wi-Fi subnet without Tailscale.</li>
+                    <li>&ldquo;Connection refused&rdquo; is different: the computer answered, but nothing is listening on that port. Check the port and that SSH is running.</li>
+                  </ul>
                 </div>
 
                 <div className="faq-item">
                   <h3 id="troubleshooting-herdr-command-not-found"><TriangleAlert className="warn-icon" size={18} strokeWidth={2.25} aria-hidden="true" /><span>&ldquo;herdr: command not found&rdquo;</span></h3>
                   <p>
-                    Herdcats looks for <code>herdr</code> in <code>PATH</code>, <code>~/.local/bin</code>, <code>/opt/homebrew/bin</code>, and <code>/usr/local/bin</code>. Ensure Herdr is installed on the remote machine.
+                    For TUI connections, Herdcats looks for <code>herdr</code> in <code>PATH</code>, <code>~/.local/bin</code>, <code>/opt/homebrew/bin</code>, and <code>/usr/local/bin</code>. Ensure Herdr is installed on the remote machine. If the machine runs the Herdr desktop app instead, see the next item.
                   </p>
+                </div>
+
+                <div className="faq-item">
+                  <h3 id="troubleshooting-core-only-mac"><TriangleAlert className="warn-icon" size={18} strokeWidth={2.25} aria-hidden="true" /><span>&ldquo;Herdr was not found&rdquo; on a Mac that runs the Herdr desktop app</span></h3>
+                  <p>
+                    The desktop app installs Herdr Core (<code>hc</code>), not the Herdr TUI. A connection saved as TUI, including every connection saved before Herdr Core support, looks only for <code>herdr</code> and reports &ldquo;SSH worked. Herdr was not found.&rdquo; Installing the TUI doesn&rsquo;t help: it starts a separate Herdr that doesn&rsquo;t show the desktop app&rsquo;s terminals.
+                  </p>
+                  <p>
+                    Workaround: open that connection&rsquo;s settings, set <strong>Herdr</strong> to <strong>Herdr Core</strong> (or <strong>Auto</strong>), and tap <strong>Connect</strong>. Herdcats adds a Herdr Core entry for the same machine and sign-in, and keeps the TUI entry. The machine then shows <strong>TUI + Herdr Core</strong> and opens with the runtime you used last. The reverse also happens: a Herdr Core connection to a machine with only the TUI can fail with a generic closed-connection error; switch it to TUI or Auto the same way.
+                  </p>
+                </div>
+
+                <div className="faq-item">
+                  <h3 id="troubleshooting-offline-retry"><TriangleAlert className="warn-icon" size={18} strokeWidth={2.25} aria-hidden="true" /><span>The app shows an offline card with Retry</span></h3>
+                  <p>
+                    The SSH connection dropped or the computer stopped answering. The banner at the top shows the connection status; the card under the content explains what failed. Output and Timeline messages you already loaded stay visible, and drafts in Compose are kept.
+                  </p>
+                  <ul>
+                    <li>Tap <strong>Retry</strong> once the computer is reachable again. If Retry keeps failing, work through <a href="#troubleshooting-connection-timeout-host-unreachable">Timed out reaching the host</a>.</li>
+                    <li>A running-cat loader means Herdcats is still waiting for a reply. An error with Retry appears only after a request fails.</li>
+                    <li>Quota shows setup steps when <code>quota-axi</code> isn&rsquo;t installed, and an error with Retry when it fails.</li>
+                  </ul>
                 </div>
 
                 <div className="faq-item">

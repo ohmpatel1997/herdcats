@@ -53,3 +53,12 @@
   .grid { grid-template-columns: minmax(0, 1fr); }
   .card { max-width: 320px; margin-inline: auto; }
 }
+
+.large { margin-top: 56px; }
+.large h2 { color: var(--text); font-size: 24px; margin-bottom: 12px; }
+.wideCard { margin: 0 0 40px; min-width: 0; }
+.wideCard h3 { color: var(--text); font-size: 20px; margin-bottom: 8px; }
+.wideCard p { color: var(--text-muted); line-height: 1.5; margin-bottom: 16px; }
+.wideCard a { display: block; border-radius: 16px; overflow: hidden; border: 1px solid var(--border); }
+.wideCard a:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+.wideCard img { display: block; width: 100%; height: auto; }
