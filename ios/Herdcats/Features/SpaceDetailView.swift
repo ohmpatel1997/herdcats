@@ -204,16 +204,27 @@ struct PaneDetailView: View {
         !appModel.isCoreMode && TimelineAgentAvailability.supports(agent: selectedPane.agent)
     }
 
+    /// "Timeline | Terminal" with room in the header (the pane's own width),
+    /// otherwise a single button for the other view. Until this pane has been
+    /// measured, it uses the style the last measured header had.
     private var timelineToggleButton: some View {
-            Button {
-                timelineMode.wrappedValue.toggle()
-            } label: {
-                Image(systemName: timelineMode.wrappedValue ? "terminal" : "bubble.left")
-                    .font(.jost(16, weight: .medium))
-                    .foregroundStyle(.primary)
-            }
-            .accessibilityLabel(timelineMode.wrappedValue ? "Terminal" : "Timeline")
-            .accessibilityIdentifier(timelineMode.wrappedValue ? "timeline-open-terminal" : "terminal-open-timeline")
+        PaneViewModeSwitch(
+            mode: timelineMode.wrappedValue ? .timeline : .terminal,
+            style: PaneViewMode.switchStyle(headerWidth: paneWidth, unmeasured: PaneViewMode.lastMeasuredStyle),
+            showsOutline: timelineSwitchShowsOutline,
+            onSwitch: { timelineMode.wrappedValue.toggle() }
+        )
+        .onChange(of: paneWidth, initial: true) { _, width in
+            guard width > 0 else { return }
+            PaneViewMode.lastMeasuredStyle = PaneViewMode.switchStyle(headerWidth: width)
+        }
+    }
+
+    /// The iOS 26 navigation bar draws its own capsule around toolbar items,
+    /// so the switch adds its outline only in a split pane's own header.
+    private var timelineSwitchShowsOutline: Bool {
+        if #available(iOS 26.0, *) { return isSplit }
+        return true
     }
 
     private var paneOptionsMenu: some View {

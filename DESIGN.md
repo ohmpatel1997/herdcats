@@ -176,6 +176,11 @@ img.pixel, canvas.pixel {
 - An agent row's second line names the agent before its folder: "Claude · ~/Projects/herdcats". Agents use the Timeline's names, never a raw identifier such as "antigravity_cli".
 - Agent badges are `keyCap` capsules with the name in `text`; the brand colour is on the icon only. They are never dimmed.
 
+### Timeline | Terminal switch (iOS)
+- An agent pane's header switches between its Timeline and its terminal. With room (a header at least 390pt wide), it shows both: two 40pt segments with 44pt-tall touch areas, the current view's icon in `accent` on a `keyCap` capsule. In a split pane's own header the pair has a hairline outline; the iOS 26 navigation bar draws its own. Pressing and holding a segment at large text sizes shows its name. Narrower headers (smaller phones, half-width splits) keep a single button for the other view.
+- Only the other view is a button, with the existing identifier (`timeline-open-terminal` in the Timeline, `terminal-open-timeline` in the terminal). The current view is a selected label with no identifier.
+- The subtitle under the title names the agent in words before the folder, as in the Agents list.
+
 ### Circular emblem
 - Mascot icon inside a circle with a 3px `mint-200` stroke and a transparent fill.
 

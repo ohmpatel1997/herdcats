@@ -151,18 +151,20 @@ struct StatusNavigationTitle: View {
                     .font(.jost(.headline))
                     .lineLimit(1)
             }
-            if let subtitle, !subtitle.isEmpty {
+            let line = Self.subtitleText(agent: agent, path: subtitle)
+            if !line.isEmpty || !(agent ?? "").isEmpty {
                 HStack(spacing: 4) {
                     if let agent, !agent.isEmpty {
                         AgentKindIcon(kind: agent, size: 10)
                     }
-                    Text(subtitle)
-                        .font(.jost(.caption2))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if !line.isEmpty {
+                        Text(line)
+                            .font(.jost(.caption2))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                 }
-            } else if let agent, !agent.isEmpty {
-                AgentKindIcon(kind: agent, size: 10)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -170,6 +172,13 @@ struct StatusNavigationTitle: View {
         .accessibilityAddTraits(.isHeader)
     }
 
+    /// The line under the title: the agent's name in words, then its folder
+    /// ("Claude · ~/Projects/herdcats"), the same rule as the Agents list.
+    static func subtitleText(agent: String?, path: String?) -> String {
+        AgentRowSubtitle.text(kind: agent ?? "", path: path ?? "")
+    }
+
+    /// The same words as the subtitle, separated by pauses rather than "·".
     private var accessibilityText: String {
         var parts: [String] = [title]
         if let agent, !agent.isEmpty {
@@ -180,6 +189,142 @@ struct StatusNavigationTitle: View {
         }
         parts.append(status.label)
         return parts.joined(separator: ", ")
+    }
+}
+
+// MARK: - Timeline | Terminal switch
+
+/// Which view a pane shows: the agent's conversation or its terminal.
+enum PaneViewMode: CaseIterable, Equatable {
+    case timeline
+    case terminal
+
+    enum SwitchStyle: Equatable {
+        /// Both views side by side, the current one highlighted.
+        case segmented
+        /// Today's single button for the other view, when the header is narrow.
+        case single
+    }
+
+    /// Below this header width (phones under 390pt, narrow split slots) the
+    /// title needs the room, so the switch is a single button.
+    static let segmentedMinimumWidth: CGFloat = 390
+
+    static func switchStyle(headerWidth: CGFloat) -> SwitchStyle {
+        headerWidth >= segmentedMinimumWidth ? .segmented : .single
+    }
+
+    /// Before a header has been measured its width reads 0. Use the style the
+    /// last measured header had instead, so the first frame doesn't show the
+    /// single button and then swap.
+    static func switchStyle(headerWidth: CGFloat, unmeasured: SwitchStyle) -> SwitchStyle {
+        headerWidth > 0 ? switchStyle(headerWidth: headerWidth) : unmeasured
+    }
+
+    /// The style the most recently measured pane header used. Most panes on a
+    /// device share it; a new pane starts from it until its own width is known.
+    @MainActor static var lastMeasuredStyle: SwitchStyle = .segmented
+
+    /// Each segment's width, inside a 44pt-tall touch area.
+    static let segmentWidth: CGFloat = 40
+
+    var other: PaneViewMode { self == .timeline ? .terminal : .timeline }
+
+    var title: String { self == .timeline ? "Timeline" : "Terminal" }
+
+    var systemImage: String { self == .timeline ? "bubble.left" : "terminal" }
+
+    /// The identifier of the button that leaves this view. It is the same as
+    /// today's single button, so "timeline-open-terminal" still means you are
+    /// in the Timeline.
+    var leaveIdentifier: String { self == .timeline ? "timeline-open-terminal" : "terminal-open-timeline" }
+
+    /// One place in the switch. Only the other view is a button; the current
+    /// view is a selected label with no identifier.
+    struct Segment: Equatable {
+        let mode: PaneViewMode
+        let isSelected: Bool
+        let identifier: String?
+        var isButton: Bool { !isSelected }
+    }
+
+    func segments(_ style: SwitchStyle) -> [Segment] {
+        let button = Segment(mode: other, isSelected: false, identifier: leaveIdentifier)
+        switch style {
+        case .single:
+            return [button]
+        case .segmented:
+            return Self.allCases.map { $0 == self ? Segment(mode: self, isSelected: true, identifier: nil) : button }
+        }
+    }
+}
+
+/// The header switch between a pane's Timeline and its terminal. With room,
+/// it shows both, the current one on a `keyCap` fill; when narrow, it is
+/// today's single button for the other view.
+struct PaneViewModeSwitch: View {
+    let mode: PaneViewMode
+    let style: PaneViewMode.SwitchStyle
+    /// False inside the iOS 26 navigation bar, which already draws its own
+    /// capsule around toolbar items.
+    var showsOutline = true
+    let onSwitch: () -> Void
+
+    var body: some View {
+        switch style {
+        case .single:
+            // Exactly today's button, plus the large content viewer.
+            Button(action: onSwitch) {
+                Image(systemName: mode.other.systemImage)
+                    .font(.jost(16, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
+            .accessibilityLabel(mode.other.title)
+            .accessibilityIdentifier(mode.leaveIdentifier)
+            .accessibilityShowsLargeContentViewer { Label(mode.other.title, systemImage: mode.other.systemImage) }
+        case .segmented:
+            HStack(spacing: 0) {
+                ForEach(mode.segments(.segmented), id: \.mode) { segment in
+                    if segment.isSelected {
+                        Image(systemName: segment.mode.systemImage)
+                            .font(.jost(15, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: PaneViewMode.segmentWidth, height: 28)
+                            .background(Theme.keyCap, in: Capsule())
+                            .frame(height: 44)
+                            .accessibilityElement()
+                            .accessibilityLabel(segment.mode.title)
+                            .accessibilityAddTraits(.isSelected)
+                            .accessibilityShowsLargeContentViewer {
+                                Label(segment.mode.title, systemImage: segment.mode.systemImage)
+                            }
+                    } else {
+                        Button(action: onSwitch) {
+                            Image(systemName: segment.mode.systemImage)
+                                .font(.jost(15, weight: .medium))
+                                .foregroundStyle(.primary)
+                                .frame(width: PaneViewMode.segmentWidth, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(segment.mode.title)
+                        .accessibilityIdentifier(segment.identifier ?? mode.leaveIdentifier)
+                        .accessibilityShowsLargeContentViewer {
+                            Label(segment.mode.title, systemImage: segment.mode.systemImage)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 2)
+            .overlay {
+                if showsOutline {
+                    Capsule().strokeBorder(Theme.border, lineWidth: 1).padding(.vertical, 6)
+                }
+            }
+            // VoiceOver reads the two segments as one switch called "View".
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("View")
+        }
     }
 }
 
